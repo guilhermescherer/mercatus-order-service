@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${ORDER_DB_URL:jdbc:postgresql://localhost:5432/order}
+    username: ${ORDER_DB_USER:mercatus}
+    password: ${ORDER_DB_PASSWORD:mercatus}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+server:
+  port: ${ORDER_PORT:8084}
+  servlet:
+    context-path: /api/v1
+
+logging:
+  structured:
+    format:
+      console: ecs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+order:
+  clients:
+    catalog:
+      base-url: ${CATALOG_BASE_URL:http://localhost:8081/api/v1}
+      connect-timeout: ${CATALOG_CONNECT_TIMEOUT:2s}
+      read-timeout: ${CATALOG_READ_TIMEOUT:5s}
+    customer:
+      base-url: ${CUSTOMER_BASE_URL:http://localhost:8082/api/v1}
+      connect-timeout: ${CUSTOMER_CONNECT_TIMEOUT:2s}
+      read-timeout: ${CUSTOMER_READ_TIMEOUT:5s}
