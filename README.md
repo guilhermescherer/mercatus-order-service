@@ -160,5 +160,5 @@ Resultados e impedimentos desta entrega estão no
 Pedidos permanecem em `CREATED`, com histórico inicial `ORDER_CREATED` e
 origem `HTTP_REQUEST`. Kafka, outbox, inbox, OrderSaga, reserva, cancelamento,
 expiração, listagem e edição de pedidos pertencem aos próximos incrementos.
-A fase 5 continua em andamento. O isolamento local de credenciais segue a
-dívida registrada no ADR-0014.
+A fase 5 continua em andamento. O isolamento local de credenciais permanece
+como dívida técnica, a ser resolvida nas fases de infraestrutura.
