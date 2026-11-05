@@ -92,15 +92,7 @@ acontece em seguida, de forma assíncrona.
 
 Para executar o fluxo completo localmente, suba os perfis `core` e `events` do
 Platform e os quatro serviços (Catalog 8081, Customer 8082, Inventory 8083,
-Order 8084). Verificação ponta a ponta com dados únicos:
-
-```bash
-python3 scripts/verify-reservation-saga.py                 # com e sem estoque
-python3 scripts/verify-reservation-saga.py --broker-outage # também para e religa o Kafka
-```
-
-`scripts/verify-real-services.py` compara o pedido consultado com o criado; rode-o
-sem o Inventory, para que o status não mude durante a verificação.
+Order 8084).
 
 ## API e regras
 
@@ -182,27 +174,10 @@ requisições, rollback depois de gravar itens, constraints, migration,
 OpenAPI e replay após reiniciar o contexto com o mesmo banco. Docker é
 obrigatório e os testes não são ignorados automaticamente quando falta.
 
-Para validar contratos com serviços reais em ambiente local de teste, inicie
-Catalog, Customer e Order e execute:
-
-```bash
-python3 scripts/verify-real-services.py
-```
-
-O script cria dados próprios identificados por UUID, registra duas compras e
-altera preço, nome, variação, cliente e endereço das fontes para comprovar que
-GET e replay mantêm a compra original, enquanto outra chave usa os dados novos.
-Não apaga registros. Também verifica códigos com barras, contrabarras e
-caracteres reservados, e a compatibilidade da rota antiga do Catalog.
-Usa apenas a biblioteca padrão do Python 3 e encerra com código diferente de
-zero se alguma verificação falhar. As URLs, incluindo `/api/v1`, podem ser
-ajustadas com `--catalog`, `--customer` e `--order`; `--timeout` define o limite
-por chamada em segundos (padrão: 15).
-
 ## Limite da entrega
 
-Pedidos permanecem em `CREATED`, com histórico inicial `ORDER_CREATED` e
-origem `HTTP_REQUEST`. Kafka, outbox, inbox, OrderSaga, reserva, cancelamento,
-expiração, listagem e edição de pedidos pertencem aos próximos incrementos.
-A fase 5 continua em andamento. O isolamento local de credenciais permanece
-como dívida técnica, a ser resolvida nas fases de infraestrutura.
+A saga cobre o passo de reserva: `CREATED → AWAITING_PAYMENT` ou
+`CREATED → CANCELLED` (`OUT_OF_STOCK`). Cancelamento pelo cliente, liberação e
+expiração de reserva, varredura de prazos vencidos, pagamento, listagem e edição
+de pedidos pertencem aos próximos incrementos. O isolamento local de credenciais
+permanece como dívida técnica, a ser resolvida nas fases de infraestrutura.
