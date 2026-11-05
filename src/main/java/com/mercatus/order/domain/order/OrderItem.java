@@ -1,6 +1,7 @@
 package com.mercatus.order.domain.order;
 
 import com.mercatus.order.domain.exception.DomainRuleException;
+import com.mercatus.order.domain.order.snapshot.SkuSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.util.Map;
 

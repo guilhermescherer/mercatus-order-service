@@ -1,13 +1,13 @@
 package com.mercatus.order.support;
 
 import com.mercatus.order.application.order.port.in.CreateOrderUseCase.CreateOrderCommand;
-import com.mercatus.order.domain.order.CustomerSnapshot;
 import com.mercatus.order.domain.order.Order;
 import com.mercatus.order.domain.order.OrderCreationRequest;
 import com.mercatus.order.domain.order.OrderItem;
 import com.mercatus.order.domain.order.PaymentMethod;
-import com.mercatus.order.domain.order.ShippingAddressSnapshot;
-import com.mercatus.order.domain.order.SkuSnapshot;
+import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
+import com.mercatus.order.domain.order.snapshot.SkuSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.math.BigDecimal;
 import java.time.Instant;

@@ -1,6 +1,6 @@
 package com.mercatus.order.web.order.dto;
 
-import com.mercatus.order.domain.order.ShippingAddressSnapshot;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
 import java.util.UUID;
 
 public record ShippingAddressResponse(UUID id, String zipCode, String street, String number,

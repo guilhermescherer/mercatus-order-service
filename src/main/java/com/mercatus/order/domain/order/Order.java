@@ -1,6 +1,8 @@
 package com.mercatus.order.domain.order;
 
 import com.mercatus.order.domain.exception.DomainRuleException;
+import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.time.Instant;
 import java.util.ArrayList;

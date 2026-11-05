@@ -3,16 +3,16 @@ package com.mercatus.order.application.order.usecase;
 import com.mercatus.order.application.exception.BusinessRuleException;
 import com.mercatus.order.application.exception.StateConflictException;
 import com.mercatus.order.application.order.port.in.CreateOrderUseCase;
-import com.mercatus.order.application.order.port.out.CatalogRepository;
-import com.mercatus.order.application.order.port.out.CustomerRepository;
+import com.mercatus.order.application.order.port.out.CatalogGateway;
+import com.mercatus.order.application.order.port.out.CustomerGateway;
 import com.mercatus.order.application.order.port.out.OrderRepository;
-import com.mercatus.order.application.saga.usecase.SagaStarter;
-import com.mercatus.order.domain.order.CustomerProfile;
+import com.mercatus.order.application.saga.usecase.support.SagaStarter;
 import com.mercatus.order.domain.order.Order;
 import com.mercatus.order.domain.order.OrderCreationRequest;
 import com.mercatus.order.domain.order.OrderCreationRequest.Line;
 import com.mercatus.order.domain.order.OrderItem;
-import com.mercatus.order.domain.order.ShippingAddressSnapshot;
+import com.mercatus.order.domain.order.snapshot.CustomerProfile;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,13 +28,13 @@ import static java.time.temporal.ChronoUnit.MICROS;
 public class CreateOrderService implements CreateOrderUseCase {
 
     private final OrderRepository orders;
-    private final CatalogRepository catalog;
-    private final CustomerRepository customers;
+    private final CatalogGateway catalog;
+    private final CustomerGateway customers;
     private final Clock clock;
     private final Supplier<UUID> identifiers;
     private final SagaStarter sagas;
 
-    public CreateOrderService(OrderRepository orders, CatalogRepository catalog, CustomerRepository customers,
+    public CreateOrderService(OrderRepository orders, CatalogGateway catalog, CustomerGateway customers,
                               Clock clock, Supplier<UUID> identifiers, SagaStarter sagas
     ) {
         this.sagas = sagas;
