@@ -31,8 +31,6 @@ import static com.mercatus.order.support.OrderFixture.request;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-// Testa o Order como orquestrador do passo de reserva: o teste faz o papel do
-// Inventory — lê o comando ReserveInventory publicado e responde no tópico de eventos.
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "order.messaging.outbox.poll-interval-ms=200")
@@ -145,8 +143,6 @@ class OrderSagaIT {
         assertThat(sagaStatus(created.id())).isEqualTo("CANCELLED");
     }
 
-    // Resposta repetida (mesmo messageId) e resposta atrasada e contraditória (outro
-    // messageId) depois de o pedido já ter avançado: nenhuma das duas muda nada.
     @Test
     void repeatedAndLateRepliesHaveNoEffect() {
         OrderResponse created = create("saga-" + UUID.randomUUID(), "flow-late");

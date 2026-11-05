@@ -5,9 +5,6 @@ import com.mercatus.order.infrastructure.messaging.payload.InventoryReservedPayl
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-// Lê o texto JSON que chegou do Kafka e o transforma nos records de contrato.
-// Qualquer problema de formato vira ContractViolationException, que o
-// DefaultErrorHandler (MessagingConfig) trata como "não adianta tentar de novo".
 public final class ContractReader {
 
     private final JsonMapper jsonMapper;

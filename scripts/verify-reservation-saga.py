@@ -1,13 +1,3 @@
-"""Verifica o passo de reserva da saga com Catalog, Customer, Inventory e Order reais.
-
-Cenários:
-  1. com estoque  -> pedido vai sozinho de CREATED para AWAITING_PAYMENT e o estoque fica reservado;
-  2. sem estoque  -> pedido vai para CANCELLED com motivo OUT_OF_STOCK e nada é reservado;
-  3. --broker-outage: Kafka parado na criação -> pedido fica em CREATED; Kafka volta -> segue sozinho.
-
-Requer Postgres e Kafka do Platform (perfis core e events) e os quatro serviços rodando.
-"""
-
 import argparse
 import json
 import subprocess

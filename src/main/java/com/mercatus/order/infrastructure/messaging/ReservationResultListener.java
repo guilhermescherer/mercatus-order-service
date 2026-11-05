@@ -16,16 +16,6 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
-// O consumidor das respostas do Inventory (InventoryReserved / InventoryReservationFailed).
-//
-// Para cada mensagem:
-//  1. lê o envelope e descobre o tipo;
-//  2. numa transação: registra o messageId na inbox (repetida → ignora) e aplica o
-//     resultado no pedido e na saga;
-//  3. depois do commit, ack() avança o offset.
-//
-// Uma resposta para um pedido que já saiu de CREATED (atrasada ou repetida com outro
-// messageId) não muda nada: o caso de uso devolve IGNORED_ALREADY_DECIDED.
 @Component
 class ReservationResultListener {
 
@@ -46,8 +36,6 @@ class ReservationResultListener {
         this.clock = clock;
     }
 
-    // Grupo "order-service" (application.yml): o Order tem o próprio marcador neste
-    // tópico, independente de qualquer outro serviço que também o leia.
     @KafkaListener(topics = "${order.messaging.topics.events}")
     void onMessage(ConsumerRecord<String, String> record, Acknowledgment ack) {
         MessageEnvelope envelope = reader.readEnvelope(record.value());

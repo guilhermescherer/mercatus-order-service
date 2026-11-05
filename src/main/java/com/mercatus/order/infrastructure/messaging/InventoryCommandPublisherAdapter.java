@@ -7,10 +7,6 @@ import com.mercatus.order.infrastructure.messaging.payload.ReserveInventoryPaylo
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
-// Transforma o pedido no comando ReserveInventory e o coloca na outbox.
-// Não fala com o Kafka: o OutboxPublisher envia depois do commit do pedido.
-// causationId é nulo porque este comando é o primeiro do fluxo (quem o causou foi
-// a requisição HTTP, identificada pelo correlationId).
 @Component
 class InventoryCommandPublisherAdapter implements InventoryCommandPublisher {
 

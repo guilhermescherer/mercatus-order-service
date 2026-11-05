@@ -4,8 +4,6 @@ ALTER TABLE orders ADD CONSTRAINT orders_status_check
 ALTER TABLE orders ADD CONSTRAINT orders_cancellation_reason_check
     CHECK ((status = 'CANCELLED') = (cancellation_reason IS NOT NULL));
 
--- Estado da saga de cada pedido: em que passo está, até quando esperar a resposta e
--- o que já se sabe da reserva. É o que permite retomar o processo após uma queda.
 CREATE TABLE order_saga (
     order_id                UUID PRIMARY KEY REFERENCES orders(id),
     step                    VARCHAR(32) NOT NULL CHECK (step IN ('RESERVE')),
