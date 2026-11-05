@@ -31,14 +31,14 @@ public final class OrderFixture {
 
     public static CreateOrderCommand command(String key) {
         return new CreateOrderCommand(key, CUSTOMER, ADDRESS, PaymentMethod.PIX,
-                List.of(new CreateOrderCommand.Line("A", 2), new CreateOrderCommand.Line("B", 3)));
+                List.of(new CreateOrderCommand.Line("A", 2), new CreateOrderCommand.Line("B", 3)), "corr-test");
     }
 
     public static CreateOrderCommand command(String key, OrderCreationRequest request) {
         return new CreateOrderCommand(key, request.customerId(), request.addressId(), request.paymentMethod(),
                 request.items().stream()
                         .map(line -> new CreateOrderCommand.Line(line.skuCode(), line.quantity()))
-                        .toList());
+                        .toList(), "corr-test");
     }
 
     public static CustomerSnapshot customer() {

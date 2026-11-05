@@ -14,6 +14,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import com.mercatus.order.web.config.CorrelationIdFilter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -78,7 +80,7 @@ class OrderController {
             @Valid @RequestBody CreateOrderRequest request,
             HttpServletRequest http
     ) {
-        var result = createOrder.create(request.toCommand(key));
+        var result = createOrder.create(request.toCommand(key, MDC.get(CorrelationIdFilter.MDC_KEY)));
 
         log.info("Order {} {}", result.order().id(), result.created() ? "created" : "replayed");
 

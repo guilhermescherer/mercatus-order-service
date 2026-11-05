@@ -10,7 +10,7 @@ public interface CreateOrderUseCase {
     Result create(CreateOrderCommand command);
 
     record CreateOrderCommand(String idempotencyKey, UUID customerId, UUID addressId,
-            PaymentMethod paymentMethod, List<Line> items) {
+            PaymentMethod paymentMethod, List<Line> items, String correlationId) {
 
         public record Line(String skuCode, long quantity) {
         }

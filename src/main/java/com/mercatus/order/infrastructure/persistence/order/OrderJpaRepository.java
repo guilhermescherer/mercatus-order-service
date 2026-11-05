@@ -17,6 +17,20 @@ interface OrderJpaRepository extends JpaRepository<OrderEntity, UUID> {
     @Query(value = "SELECT nextval('order_number_seq')", nativeQuery = true)
     long nextNumber();
 
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE orders
+            SET status = :status, cancellation_reason = :reason, updated_at = :updated, version = version + 1
+            WHERE id = :id AND version = :version
+            """, nativeQuery = true)
+    int updateState(
+            @Param("id") UUID id,
+            @Param("status") String status,
+            @Param("reason") String reason,
+            @Param("updated") Instant updated,
+            @Param("version") long version
+    );
+
     @Modifying
     @Query(value = """
             INSERT INTO orders (id, number, idempotency_key, creation_request, customer_snapshot,

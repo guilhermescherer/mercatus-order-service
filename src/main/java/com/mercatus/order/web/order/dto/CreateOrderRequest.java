@@ -13,7 +13,7 @@ import java.util.UUID;
 public record CreateOrderRequest(@NotNull UUID customerId, @NotNull UUID addressId,
         @NotNull PaymentMethod paymentMethod, @NotEmpty List<@NotNull @Valid OrderLineRequest> items) {
 
-    public CreateOrderCommand toCommand(String idempotencyKey) {
+    public CreateOrderCommand toCommand(String idempotencyKey, String correlationId) {
         var codes = new HashSet<String>();
 
         for (OrderLineRequest item : items) {
@@ -26,7 +26,8 @@ public record CreateOrderRequest(@NotNull UUID customerId, @NotNull UUID address
                 idempotencyKey, customerId, addressId, paymentMethod,
                 items.stream()
                         .map(item -> new CreateOrderCommand.Line(item.skuCode(), item.quantity()))
-                        .toList()
+                        .toList(),
+                correlationId
         );
     }
 }

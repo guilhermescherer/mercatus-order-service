@@ -6,6 +6,7 @@ import com.mercatus.order.application.order.port.out.CatalogRepository;
 import com.mercatus.order.application.order.port.out.CustomerRepository;
 import com.mercatus.order.application.order.port.out.OrderRepository;
 import com.mercatus.order.application.order.usecase.CreateOrderService;
+import com.mercatus.order.application.saga.usecase.SagaStarter;
 import com.mercatus.order.domain.order.CatalogSku;
 import com.mercatus.order.domain.order.CustomerProfile;
 import com.mercatus.order.domain.order.OrderCreationRequest;
@@ -29,8 +30,9 @@ class CreateOrderServiceTest {
     private final OrderRepository orders = mock(OrderRepository.class);
     private final CatalogRepository catalog = mock(CatalogRepository.class);
     private final CustomerRepository customers = mock(CustomerRepository.class);
+    private final SagaStarter sagas = mock(SagaStarter.class);
     private final CreateOrderService service = new CreateOrderService(orders, catalog, customers,
-            Clock.fixed(NOW, ZoneOffset.UTC), UUID::randomUUID);
+            Clock.fixed(NOW, ZoneOffset.UTC), UUID::randomUUID, sagas);
 
     @Test
     void replayDoesNotConsultRemoteServicesOrWriteAnything() {
@@ -44,6 +46,7 @@ class CreateOrderServiceTest {
         verifyNoInteractions(catalog, customers);
         verify(orders, never()).tryCreate(any());
         verify(orders, never()).nextNumber();
+        verifyNoInteractions(sagas);
     }
 
     @Test

@@ -56,7 +56,7 @@ class OrderControllerTest {
     @Test
     void createdAndReplayResponsesContainContextPathAndNeverExposeKeyOrSensitiveLogs(CapturedOutput output) throws Exception {
         var order = order();
-        when(create.create(command("secret-idempotency-key")))
+        when(create.create(argThat(c -> c != null && c.idempotencyKey().equals("secret-idempotency-key"))))
                 .thenReturn(new CreateOrderUseCase.Result(order, true),
                         new CreateOrderUseCase.Result(order, false));
 
@@ -177,7 +177,7 @@ class OrderControllerTest {
 
         for (int i = 0; i < exceptions.size(); i++) {
             reset(create);
-            when(create.create(command("key"))).thenThrow(exceptions.get(i));
+            when(create.create(argThat(c -> c != null && c.idempotencyKey().equals("key")))).thenThrow(exceptions.get(i));
 
             mvc.perform(
                     post("/orders")

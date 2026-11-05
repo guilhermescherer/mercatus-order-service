@@ -6,6 +6,7 @@ import com.mercatus.order.application.order.port.in.CreateOrderUseCase;
 import com.mercatus.order.application.order.port.out.CatalogRepository;
 import com.mercatus.order.application.order.port.out.CustomerRepository;
 import com.mercatus.order.application.order.port.out.OrderRepository;
+import com.mercatus.order.application.saga.usecase.SagaStarter;
 import com.mercatus.order.domain.order.CustomerProfile;
 import com.mercatus.order.domain.order.Order;
 import com.mercatus.order.domain.order.OrderCreationRequest;
@@ -31,10 +32,12 @@ public class CreateOrderService implements CreateOrderUseCase {
     private final CustomerRepository customers;
     private final Clock clock;
     private final Supplier<UUID> identifiers;
+    private final SagaStarter sagas;
 
     public CreateOrderService(OrderRepository orders, CatalogRepository catalog, CustomerRepository customers,
-                              Clock clock, Supplier<UUID> identifiers
+                              Clock clock, Supplier<UUID> identifiers, SagaStarter sagas
     ) {
+        this.sagas = sagas;
         this.orders = orders;
         this.catalog = catalog;
         this.customers = customers;
@@ -68,6 +71,7 @@ public class CreateOrderService implements CreateOrderUseCase {
                 items, clock.instant().truncatedTo(MICROS));
 
         if (orders.tryCreate(order)) {
+            sagas.start(order, command.correlationId(), order.createdAt());
             return new Result(order, true);
         }
 

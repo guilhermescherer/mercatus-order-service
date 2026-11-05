@@ -67,7 +67,7 @@ class OrderApiIT {
 
     @BeforeEach
     void prepare() {
-        jdbc.execute("TRUNCATE order_transitions, order_items, orders");
+        jdbc.execute("TRUNCATE order_saga, order_transitions, order_items, orders");
 
         remote.reset();
 
