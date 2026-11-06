@@ -2,22 +2,23 @@ package com.mercatus.order.application.order;
 
 import com.mercatus.order.application.exception.BusinessRuleException;
 import com.mercatus.order.application.exception.StateConflictException;
-import com.mercatus.order.application.order.port.out.CatalogRepository;
-import com.mercatus.order.application.order.port.out.CustomerRepository;
+import com.mercatus.order.application.order.port.out.CatalogGateway;
+import com.mercatus.order.application.order.port.out.CustomerGateway;
 import com.mercatus.order.application.order.port.out.OrderRepository;
 import com.mercatus.order.application.order.usecase.CreateOrderService;
-import com.mercatus.order.domain.order.CatalogSku;
-import com.mercatus.order.domain.order.CustomerProfile;
+import com.mercatus.order.application.saga.usecase.support.SagaStarter;
 import com.mercatus.order.domain.order.OrderCreationRequest;
 import com.mercatus.order.domain.order.PaymentMethod;
-import com.mercatus.order.domain.order.SkuSnapshot;
+import com.mercatus.order.domain.order.snapshot.CatalogSku;
+import com.mercatus.order.domain.order.snapshot.CustomerProfile;
+import com.mercatus.order.domain.order.snapshot.SkuSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static com.mercatus.order.support.OrderFixture.*;
@@ -27,10 +28,11 @@ import static org.mockito.Mockito.*;
 class CreateOrderServiceTest {
 
     private final OrderRepository orders = mock(OrderRepository.class);
-    private final CatalogRepository catalog = mock(CatalogRepository.class);
-    private final CustomerRepository customers = mock(CustomerRepository.class);
+    private final CatalogGateway catalog = mock(CatalogGateway.class);
+    private final CustomerGateway customers = mock(CustomerGateway.class);
+    private final SagaStarter sagas = mock(SagaStarter.class);
     private final CreateOrderService service = new CreateOrderService(orders, catalog, customers,
-            Clock.fixed(NOW, ZoneOffset.UTC), UUID::randomUUID);
+            Clock.fixed(NOW, ZoneOffset.UTC), UUID::randomUUID, sagas);
 
     @Test
     void replayDoesNotConsultRemoteServicesOrWriteAnything() {
@@ -44,6 +46,7 @@ class CreateOrderServiceTest {
         verifyNoInteractions(catalog, customers);
         verify(orders, never()).tryCreate(any());
         verify(orders, never()).nextNumber();
+        verifyNoInteractions(sagas);
     }
 
     @Test

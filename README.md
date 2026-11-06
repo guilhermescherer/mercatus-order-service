@@ -41,6 +41,19 @@ O Order inicia na `8084`; cada serviço usa seu próprio banco.
 | `CUSTOMER_BASE_URL` | `http://localhost:8082/api/v1` |
 | `CATALOG_CONNECT_TIMEOUT`, `CUSTOMER_CONNECT_TIMEOUT` | `2s` |
 | `CATALOG_READ_TIMEOUT`, `CUSTOMER_READ_TIMEOUT` | `5s` |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` |
+| `INVENTORY_COMMANDS_TOPIC` | `inventory.commands.v1` |
+| `INVENTORY_EVENTS_TOPIC` | `inventory.events.v1` |
+| `OUTBOX_POLL_INTERVAL_MS` | `500` |
+| `OUTBOX_BATCH_SIZE` | `100` |
+| `OUTBOX_SEND_TIMEOUT` | `10s` |
+
+Mensagens para o Kafka são gravadas na tabela `outbox_message`, na mesma
+transação do dado de negócio, e enviadas por um publicador periódico; se o
+broker estiver fora, ficam pendentes e saem quando ele volta. Mensagens
+recebidas são registradas em `inbox_message` pelo `messageId`, para que uma
+repetição não tenha efeito. O serviço sobe mesmo sem Kafka. Para executar
+localmente com mensageria, suba também o perfil `events` do Platform.
 
 Os timeouts aceitam durações Spring; devem ser positivos. URLs e timeouts
 também podem ser sobrescritos em `order.clients.catalog` e
@@ -54,6 +67,32 @@ também podem ser sobrescritos em `order.clients.catalog` e
 Logs da aplicação são JSON ECS em inglês, com `X-Correlation-Id` recebido ou
 gerado na borda e propagado às chamadas HTTP. Não são registrados corpo,
 endereço, e-mail ou chave de idempotência.
+
+## Saga de reserva de estoque
+
+Ao criar um pedido novo, o Order grava na mesma transação o pedido, o estado da
+saga (`order_saga`) e o comando `ReserveInventory` na outbox. O comando vai para o
+tópico `inventory.commands.v1` com chave `orderId`. O Inventory responde em
+`inventory.events.v1`:
+
+| Resposta | Pedido |
+|---|---|
+| `InventoryReserved` | `CREATED → AWAITING_PAYMENT` |
+| `InventoryReservationFailed` (`OUT_OF_STOCK`) | `CREATED → CANCELLED`, motivo `OUT_OF_STOCK` |
+
+Respostas repetidas (mesmo `messageId`) ou atrasadas para um pedido que já saiu de
+`CREATED` não têm efeito. Repetir `POST /orders` com a mesma chave não envia outro
+comando. O `X-Correlation-Id` da criação acompanha o comando e a resposta. A
+criação do pedido continua respondendo `201` com `CREATED`; a mudança de estado
+acontece em seguida, de forma assíncrona.
+
+| Variável | Padrão |
+|---|---|
+| `ORDER_RESERVE_TIMEOUT` | `PT5M` (prazo registrado na saga para a resposta) |
+
+Para executar o fluxo completo localmente, suba os perfis `core` e `events` do
+Platform e os quatro serviços (Catalog 8081, Customer 8082, Inventory 8083,
+Order 8084).
 
 ## API e regras
 
@@ -135,30 +174,10 @@ requisições, rollback depois de gravar itens, constraints, migration,
 OpenAPI e replay após reiniciar o contexto com o mesmo banco. Docker é
 obrigatório e os testes não são ignorados automaticamente quando falta.
 
-Para validar contratos com serviços reais em ambiente local de teste, inicie
-Catalog, Customer e Order e execute:
-
-```bash
-python3 scripts/verify-real-services.py
-```
-
-O script cria dados próprios identificados por UUID, registra duas compras e
-altera preço, nome, variação, cliente e endereço das fontes para comprovar que
-GET e replay mantêm a compra original, enquanto outra chave usa os dados novos.
-Não apaga registros. Também verifica códigos com barras, contrabarras e
-caracteres reservados, e a compatibilidade da rota antiga do Catalog.
-Usa apenas a biblioteca padrão do Python 3 e encerra com código diferente de
-zero se alguma verificação falhar. As URLs, incluindo `/api/v1`, podem ser
-ajustadas com `--catalog`, `--customer` e `--order`; `--timeout` define o limite
-por chamada em segundos (padrão: 15).
-
-Resultados e impedimentos desta entrega estão no
-[registro de validação](../.kiro/specs/order-creation-query/validation.md).
-
 ## Limite da entrega
 
-Pedidos permanecem em `CREATED`, com histórico inicial `ORDER_CREATED` e
-origem `HTTP_REQUEST`. Kafka, outbox, inbox, OrderSaga, reserva, cancelamento,
-expiração, listagem e edição de pedidos pertencem aos próximos incrementos.
-A fase 5 continua em andamento. O isolamento local de credenciais segue a
-dívida registrada no ADR-0014.
+A saga cobre o passo de reserva: `CREATED → AWAITING_PAYMENT` ou
+`CREATED → CANCELLED` (`OUT_OF_STOCK`). Cancelamento pelo cliente, liberação e
+expiração de reserva, varredura de prazos vencidos, pagamento, listagem e edição
+de pedidos pertencem aos próximos incrementos. O isolamento local de credenciais
+permanece como dívida técnica, a ser resolvida nas fases de infraestrutura.

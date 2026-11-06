@@ -1,13 +1,13 @@
 package com.mercatus.order.infrastructure.persistence.order;
 
-import com.mercatus.order.domain.order.CustomerSnapshot;
 import com.mercatus.order.domain.order.Order;
 import com.mercatus.order.domain.order.OrderCreationRequest;
 import com.mercatus.order.domain.order.OrderItem;
 import com.mercatus.order.domain.order.OrderStatus;
 import com.mercatus.order.domain.order.OrderTransition;
 import com.mercatus.order.domain.order.PaymentMethod;
-import com.mercatus.order.domain.order.ShippingAddressSnapshot;
+import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.util.Map;
 import tools.jackson.core.type.TypeReference;

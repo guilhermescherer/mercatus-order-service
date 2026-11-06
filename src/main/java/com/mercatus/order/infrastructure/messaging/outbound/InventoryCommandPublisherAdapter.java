@@ -1,0 +1,32 @@
+package com.mercatus.order.infrastructure.messaging.outbound;
+
+import com.mercatus.order.application.saga.port.out.InventoryCommandPublisher;
+import com.mercatus.order.domain.order.Order;
+import com.mercatus.order.infrastructure.messaging.config.MessagingProperties;
+import com.mercatus.order.infrastructure.messaging.contract.payload.ReserveInventoryPayload;
+import com.mercatus.order.infrastructure.messaging.outbox.OutboxWriter;
+import com.mercatus.order.infrastructure.messaging.outbox.OutboxWriter.OutgoingMessage;
+import java.util.UUID;
+import org.springframework.stereotype.Component;
+
+@Component
+class InventoryCommandPublisherAdapter implements InventoryCommandPublisher {
+
+    private final OutboxWriter outbox;
+    private final MessagingProperties properties;
+
+    InventoryCommandPublisherAdapter(OutboxWriter outbox, MessagingProperties properties) {
+        this.outbox = outbox;
+        this.properties = properties;
+    }
+
+    @Override
+    public UUID requestReservation(Order order, String correlationId) {
+        var payload = new ReserveInventoryPayload(order.id(), order.items().stream()
+                .map(item -> new ReserveInventoryPayload.Line(item.skuCode(), item.quantity()))
+                .toList());
+
+        return outbox.enqueue(properties.topics().commands(), new OutgoingMessage(ReserveInventoryPayload.TYPE, 1,
+                order.id().toString(), correlationId, null, payload)).messageId();
+    }
+}

@@ -1,6 +1,7 @@
 package com.mercatus.order.domain.order;
 
 import com.mercatus.order.domain.exception.DomainRuleException;
+import com.mercatus.order.domain.order.snapshot.SkuSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -119,5 +120,51 @@ class OrderTest {
     void rejectsInconsistentSubtotal() {
         assertThatThrownBy(() -> new OrderItem("A", "Product", Map.of(), 2,
                 new Money(new BigDecimal("42.50"), "BRL"), Money.zero())).isInstanceOf(DomainRuleException.class);
+    }
+
+    @Test
+    void reservedOrderAwaitsPaymentAndRecordsTheTransition() {
+        var later = NOW.plusSeconds(5);
+        var moved = order().awaitPayment(later);
+
+        assertThat(moved.status()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+        assertThat(moved.cancellationReason()).isNull();
+        assertThat(moved.updatedAt()).isEqualTo(later);
+        assertThat(moved.history()).hasSize(2);
+        assertThat(moved.history().getLast())
+                .isEqualTo(new OrderTransition(OrderStatus.CREATED, OrderStatus.AWAITING_PAYMENT,
+                        "INVENTORY_RESERVED", later, "SAGA"));
+    }
+
+    @Test
+    void outOfStockOrderIsCancelledWithReason() {
+        var cancelled = order().cancel(CancellationReason.OUT_OF_STOCK, "INVENTORY_RESERVATION_FAILED",
+                NOW.plusSeconds(5));
+
+        assertThat(cancelled.status()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(cancelled.cancellationReason()).isEqualTo("OUT_OF_STOCK");
+        assertThat(cancelled.history().getLast().trigger()).isEqualTo("INVENTORY_RESERVATION_FAILED");
+    }
+
+    @Test
+    void decidedOrderRejectsFurtherReservationTransitions() {
+        var awaiting = order().awaitPayment(NOW.plusSeconds(1));
+        var cancelled = order().cancel(CancellationReason.OUT_OF_STOCK, "INVENTORY_RESERVATION_FAILED",
+                NOW.plusSeconds(1));
+
+        assertThatThrownBy(() -> awaiting.awaitPayment(NOW.plusSeconds(2))).isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> awaiting.cancel(CancellationReason.OUT_OF_STOCK, "X", NOW.plusSeconds(2)))
+                .isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> cancelled.awaitPayment(NOW.plusSeconds(2))).isInstanceOf(DomainRuleException.class);
+    }
+
+    @Test
+    void transitionDoesNotChangeTheOriginalOrder() {
+        var original = order();
+
+        original.awaitPayment(NOW.plusSeconds(1));
+
+        assertThat(original.status()).isEqualTo(OrderStatus.CREATED);
+        assertThat(original.history()).hasSize(1);
     }
 }

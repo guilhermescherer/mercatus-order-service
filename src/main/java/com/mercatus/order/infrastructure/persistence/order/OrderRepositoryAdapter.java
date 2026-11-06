@@ -2,6 +2,7 @@ package com.mercatus.order.infrastructure.persistence.order;
 
 import com.mercatus.order.application.order.port.out.OrderRepository;
 import com.mercatus.order.domain.order.Order;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
 
 import java.util.Locale;
@@ -77,5 +78,24 @@ class OrderRepositoryAdapter implements OrderRepository {
         }
 
         return true;
+    }
+
+    @Override
+    public void update(Order order) {
+        int updated = orderRepository.updateState(order.id(), order.status().name(), order.cancellationReason(),
+                order.updatedAt(), order.version());
+
+        if (updated == 0) {
+            throw new OptimisticLockingFailureException("Order " + order.id() + " was changed concurrently");
+        }
+
+        int position = order.history().size() - 1;
+        var transition = order.history().get(position);
+
+        transitionsRepository.insert(
+                order.id(), position,
+                transition.fromStatus() == null ? null : transition.fromStatus().name(),
+                transition.toStatus().name(), transition.trigger(), transition.occurredAt(), transition.actor()
+        );
     }
 }

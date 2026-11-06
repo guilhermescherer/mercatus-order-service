@@ -1,13 +1,13 @@
 package com.mercatus.order.support;
 
 import com.mercatus.order.application.order.port.in.CreateOrderUseCase.CreateOrderCommand;
-import com.mercatus.order.domain.order.CustomerSnapshot;
 import com.mercatus.order.domain.order.Order;
 import com.mercatus.order.domain.order.OrderCreationRequest;
 import com.mercatus.order.domain.order.OrderItem;
 import com.mercatus.order.domain.order.PaymentMethod;
-import com.mercatus.order.domain.order.ShippingAddressSnapshot;
-import com.mercatus.order.domain.order.SkuSnapshot;
+import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
+import com.mercatus.order.domain.order.snapshot.SkuSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -31,14 +31,14 @@ public final class OrderFixture {
 
     public static CreateOrderCommand command(String key) {
         return new CreateOrderCommand(key, CUSTOMER, ADDRESS, PaymentMethod.PIX,
-                List.of(new CreateOrderCommand.Line("A", 2), new CreateOrderCommand.Line("B", 3)));
+                List.of(new CreateOrderCommand.Line("A", 2), new CreateOrderCommand.Line("B", 3)), "corr-test");
     }
 
     public static CreateOrderCommand command(String key, OrderCreationRequest request) {
         return new CreateOrderCommand(key, request.customerId(), request.addressId(), request.paymentMethod(),
                 request.items().stream()
                         .map(line -> new CreateOrderCommand.Line(line.skuCode(), line.quantity()))
-                        .toList());
+                        .toList(), "corr-test");
     }
 
     public static CustomerSnapshot customer() {

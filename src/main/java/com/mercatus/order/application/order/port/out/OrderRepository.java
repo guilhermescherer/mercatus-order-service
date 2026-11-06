@@ -10,4 +10,6 @@ public interface OrderRepository {
     Optional<Order> findByKey(String key);
     String nextNumber();
     boolean tryCreate(Order order);
+
+    void update(Order order);
 }

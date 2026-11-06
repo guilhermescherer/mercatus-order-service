@@ -1,8 +1,11 @@
 package com.mercatus.order.domain.order;
 
 import com.mercatus.order.domain.exception.DomainRuleException;
+import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
+import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
 import com.mercatus.order.domain.shared.Money;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -63,6 +66,10 @@ public class Order {
             throw new DomainRuleException("Order requires a status and history");
         }
 
+        if ((status == OrderStatus.CANCELLED) != (cancellationReason != null)) {
+            throw new DomainRuleException("Only cancelled orders have a cancellation reason");
+        }
+
         this.id = id;
         this.number = number;
         this.idempotencyKey = idempotencyKey;
@@ -96,6 +103,30 @@ public class Order {
             List<OrderTransition> history, Instant createdAt, Instant updatedAt, long version) {
         return new Order(id, number, key, request, customer, address, paymentMethod, items, total, status,
                 cancellationReason, history, createdAt, updatedAt, version);
+    }
+
+    public Order awaitPayment(Instant now) {
+        return moveTo(OrderStatus.AWAITING_PAYMENT, null, "INVENTORY_RESERVED", now);
+    }
+
+    public Order cancel(CancellationReason reason, String trigger, Instant now) {
+        Objects.requireNonNull(reason);
+
+        return moveTo(OrderStatus.CANCELLED, reason.name(), trigger, now);
+    }
+
+    private Order moveTo(OrderStatus target, String reason, String trigger, Instant now) {
+        Objects.requireNonNull(now);
+
+        if (!status.canMoveTo(target)) {
+            throw new DomainRuleException("Order cannot move from " + status + " to " + target);
+        }
+
+        var nextHistory = new ArrayList<>(history);
+        nextHistory.add(new OrderTransition(status, target, trigger, now, "SAGA"));
+
+        return new Order(id, number, idempotencyKey, creationRequest, customer, shippingAddress, paymentMethod, items,
+                total, target, reason, nextHistory, createdAt, now, version);
     }
 
     public UUID id() {

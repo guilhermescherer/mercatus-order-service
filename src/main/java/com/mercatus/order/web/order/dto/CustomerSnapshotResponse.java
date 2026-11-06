@@ -1,6 +1,6 @@
 package com.mercatus.order.web.order.dto;
 
-import com.mercatus.order.domain.order.CustomerSnapshot;
+import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
 import java.util.UUID;
 
 public record CustomerSnapshotResponse(UUID id, String name, String email) {
