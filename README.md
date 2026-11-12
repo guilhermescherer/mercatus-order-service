@@ -68,31 +68,62 @@ Logs da aplicação são JSON ECS em inglês, com `X-Correlation-Id` recebido ou
 gerado na borda e propagado às chamadas HTTP. Não são registrados corpo,
 endereço, e-mail ou chave de idempotência.
 
-## Saga de reserva de estoque
+## Saga do pedido
 
 Ao criar um pedido novo, o Order grava na mesma transação o pedido, o estado da
-saga (`order_saga`) e o comando `ReserveInventory` na outbox. O comando vai para o
-tópico `inventory.commands.v1` com chave `orderId`. O Inventory responde em
-`inventory.events.v1`:
+saga (`order_saga`) e o comando `ReserveInventory` na outbox. Comandos vão para
+`inventory.commands.v1` e respostas chegam em `inventory.events.v1`, sempre com
+chave `orderId`, o que mantém a ordem das mensagens de um mesmo pedido.
 
-| Resposta | Pedido |
+| Mensagem recebida | Pedido |
 |---|---|
 | `InventoryReserved` | `CREATED → AWAITING_PAYMENT` |
 | `InventoryReservationFailed` (`OUT_OF_STOCK`) | `CREATED → CANCELLED`, motivo `OUT_OF_STOCK` |
+| `ReservationExpired` com pedido aguardando pagamento | `AWAITING_PAYMENT → CANCELLING → CANCELLED`, motivo `RESERVATION_EXPIRED` |
+| `ReservationReleased` / `ReservationExpired` com pedido em cancelamento | `CANCELLING → CANCELLED`, motivo mantido |
 
-Respostas repetidas (mesmo `messageId`) ou atrasadas para um pedido que já saiu de
-`CREATED` não têm efeito. Repetir `POST /orders` com a mesma chave não envia outro
-comando. O `X-Correlation-Id` da criação acompanha o comando e a resposta. A
-criação do pedido continua respondendo `201` com `CREATED`; a mudança de estado
-acontece em seguida, de forma assíncrona.
+### Cancelamento
+
+`POST /api/v1/orders/{id}/cancel` não tem corpo nem exige `Idempotency-Key`:
+repetir o pedido devolve o estado atual sem nova compensação.
+
+| Estado | Efeito | HTTP |
+|---|---|---|
+| `AWAITING_PAYMENT` | `CANCELLING` e comando `ReleaseReservation` na mesma transação | `202` |
+| `CREATED` com reserva em andamento | `CANCELLING`; aguarda a resposta da reserva. Se ela for aceita, a reserva é liberada; se faltar estoque, o pedido termina sem liberar | `202` |
+| `CREATED` sem saga (pedidos anteriores à saga) | `CANCELLING → CANCELLED` de imediato | `200` |
+| `CANCELLING` / `CANCELLED` | nenhum | `202` / `200` |
+
+O motivo é `CUSTOMER_REQUEST` e a transição registra o ator `CUSTOMER`. O pedido só
+chega a `CANCELLED` quando o Inventory confirma a liberação ou informa que a reserva
+já expirou. Conflito de versão com a saga responde `409`; repetir é seguro.
+
+Respostas repetidas ou atrasadas não fazem o pedido voltar: nada sai de
+`CANCELLED`. Uma reserva confirmada depois de o pedido já estar cancelado é
+liberada automaticamente.
+
+### Prazos e reenvio
+
+Cada passo que espera resposta (reserva ou liberação) tem prazo. Uma varredura
+periódica reenvia o comando do passo vencido com novo `messageId` e o mesmo
+`correlationId`; o Inventory responde de forma idempotente. Se o comando anterior
+ainda não saiu da outbox (Kafka fora), só o prazo é estendido. Esgotadas as
+tentativas, a saga recebe `stalled_at` e um log `ERROR` pede ação do operador; uma
+resposta tardia ainda é aplicada normalmente. Prazo vencido nunca cancela o pedido:
+demora não é falta de estoque.
 
 | Variável | Padrão |
 |---|---|
-| `ORDER_RESERVE_TIMEOUT` | `PT5M` (prazo registrado na saga para a resposta) |
+| `ORDER_RESERVE_TIMEOUT` | `PT5M` (prazo da reserva) |
+| `ORDER_RELEASE_TIMEOUT` | `PT5M` (prazo da liberação) |
+| `ORDER_SAGA_MAX_RETRIES` | `5` |
+| `ORDER_SAGA_RECOVERY_INTERVAL_MS` | `30000` |
+| `ORDER_SAGA_RECOVERY_BATCH_SIZE` | `100` |
 
-Para executar o fluxo completo localmente, suba os perfis `core` e `events` do
-Platform e os quatro serviços (Catalog 8081, Customer 8082, Inventory 8083,
-Order 8084).
+O Inventory precisa estar numa versão que entenda `ReleaseReservation` antes de o
+Order enviar esse comando. Para executar o fluxo completo localmente, suba os perfis
+`core` e `events` do Platform e os quatro serviços (Catalog 8081, Customer 8082,
+Inventory 8083, Order 8084).
 
 ## API e regras
 
@@ -104,6 +135,8 @@ curl -i http://localhost:8084/api/v1/orders \
   -d '{"customerId":"019a0000-0000-7000-8000-000000000001","addressId":"019a0000-0000-7000-8000-000000000002","paymentMethod":"PIX","items":[{"skuCode":"SHIRT-M","quantity":2}]}'
 
 curl http://localhost:8084/api/v1/orders/ID_DO_PEDIDO
+
+curl -i -X POST http://localhost:8084/api/v1/orders/ID_DO_PEDIDO/cancel
 ```
 
 Substitua os ids e o código pelos registros existentes em Customer e Catalog.
@@ -167,6 +200,10 @@ rede por `MockRestServiceServer`; MockMvc usa o mesmo configurador JSON da
 aplicação. Os mocks usam o mecanismo por subclassificação, sem anexar um
 agente à JVM.
 
+Os ITs de saga (`OrderSagaIT`, `OrderCancellationIT`, `ReservationClosureIT`,
+`SagaRecoveryIT`) usam Kafka `apache/kafka:3.9.1` e PostgreSQL 17 reais e fazem o
+papel do Inventory publicando as respostas no tópico de eventos.
+
 `OrderApiIT` e `OrderRestartIT` usam PostgreSQL 17 via Testcontainers,
 aplicação real e servidor HTTP controlável do JDK. Cobrem snapshots,
 contratos, validações, falhas remotas, timeout, concorrência entre oito
@@ -176,8 +213,10 @@ obrigatório e os testes não são ignorados automaticamente quando falta.
 
 ## Limite da entrega
 
-A saga cobre o passo de reserva: `CREATED → AWAITING_PAYMENT` ou
-`CREATED → CANCELLED` (`OUT_OF_STOCK`). Cancelamento pelo cliente, liberação e
-expiração de reserva, varredura de prazos vencidos, pagamento, listagem e edição
-de pedidos pertencem aos próximos incrementos. O isolamento local de credenciais
-permanece como dívida técnica, a ser resolvida nas fases de infraestrutura.
+A saga cobre reserva, cancelamento, liberação e expiração de reserva, além do
+reenvio por prazo. Pagamento, listagem e edição de pedidos pertencem às próximas
+fases. A varredura de prazos assume uma instância do Order; com várias, a seleção
+das sagas vencidas precisa de bloqueio por linha. Não há endpoint de operador para
+sagas travadas (o aviso é o log e a coluna `stalled_at`). O isolamento local de
+credenciais permanece como dívida técnica, a ser resolvida nas fases de
+infraestrutura.

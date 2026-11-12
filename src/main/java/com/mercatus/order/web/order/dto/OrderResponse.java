@@ -19,7 +19,8 @@ public record OrderResponse(UUID id, String number, CustomerSnapshotResponse cus
                         .map(OrderItemResponse::from)
                         .toList(),
                 MoneyResponse.from(order.total()),
-                order.status().name(), order.cancellationReason(),
+                order.status().name(),
+                order.cancellationReason() == null ? null : order.cancellationReason().name(),
                 order.history()
                         .stream()
                         .map(OrderTransitionResponse::from)

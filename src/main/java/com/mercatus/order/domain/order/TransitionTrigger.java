@@ -1,0 +1,11 @@
+package com.mercatus.order.domain.order;
+
+public enum TransitionTrigger {
+
+    ORDER_CREATED,
+    INVENTORY_RESERVED,
+    INVENTORY_RESERVATION_FAILED,
+    CUSTOMER_CANCELLATION_REQUESTED,
+    RESERVATION_RELEASED,
+    RESERVATION_EXPIRED
+}

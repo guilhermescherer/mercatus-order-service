@@ -67,35 +67,34 @@ class OrderRepositoryAdapter implements OrderRepository {
             );
         }
 
-        for (int position = 0; position < order.history().size(); position++) {
-            var transition = order.history().get(position);
-
-            transitionsRepository.insert(
-                    order.id(), position,
-                    transition.fromStatus() == null ? null : transition.fromStatus().name(),
-                    transition.toStatus().name(), transition.trigger(), transition.occurredAt(), transition.actor()
-            );
-        }
+        insertTransitions(order, 0);
 
         return true;
     }
 
     @Override
     public void update(Order order) {
-        int updated = orderRepository.updateState(order.id(), order.status().name(), order.cancellationReason(),
+        int updated = orderRepository.updateState(order.id(), order.status().name(),
+                order.cancellationReason() == null ? null : order.cancellationReason().name(),
                 order.updatedAt(), order.version());
 
         if (updated == 0) {
             throw new OptimisticLockingFailureException("Order " + order.id() + " was changed concurrently");
         }
 
-        int position = order.history().size() - 1;
-        var transition = order.history().get(position);
+        insertTransitions(order, transitionsRepository.countByOrderId(order.id()));
+    }
 
-        transitionsRepository.insert(
-                order.id(), position,
-                transition.fromStatus() == null ? null : transition.fromStatus().name(),
-                transition.toStatus().name(), transition.trigger(), transition.occurredAt(), transition.actor()
-        );
+    private void insertTransitions(Order order, int from) {
+        for (int position = from; position < order.history().size(); position++) {
+            var transition = order.history().get(position);
+
+            transitionsRepository.insert(
+                    order.id(), position,
+                    transition.fromStatus() == null ? null : transition.fromStatus().name(),
+                    transition.toStatus().name(), transition.trigger().name(), transition.occurredAt(),
+                    transition.actor().name()
+            );
+        }
     }
 }

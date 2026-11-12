@@ -24,4 +24,7 @@ interface OrderTransitionJpaRepository extends JpaRepository<OrderTransitionEnti
             @Param("occurred") Instant occurred,
             @Param("actor") String actor
     );
+
+    @Query(value = "SELECT count(*) FROM order_transitions WHERE order_id = :orderId", nativeQuery = true)
+    int countByOrderId(@Param("orderId") UUID orderId);
 }

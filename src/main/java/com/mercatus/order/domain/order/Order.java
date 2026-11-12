@@ -22,7 +22,7 @@ public class Order {
     private final List<OrderItem> items;
     private final Money total;
     private final OrderStatus status;
-    private final String cancellationReason;
+    private final CancellationReason cancellationReason;
     private final List<OrderTransition> history;
     private final Instant createdAt;
     private final Instant updatedAt;
@@ -30,7 +30,7 @@ public class Order {
 
     private Order(UUID id, String number, String idempotencyKey, OrderCreationRequest creationRequest,
             CustomerSnapshot customer, ShippingAddressSnapshot shippingAddress, PaymentMethod paymentMethod,
-            List<OrderItem> items, Money total, OrderStatus status, String cancellationReason,
+            List<OrderItem> items, Money total, OrderStatus status, CancellationReason cancellationReason,
             List<OrderTransition> history, Instant createdAt, Instant updatedAt, long version) {
         Objects.requireNonNull(id);
         Objects.requireNonNull(createdAt);
@@ -66,8 +66,8 @@ public class Order {
             throw new DomainRuleException("Order requires a status and history");
         }
 
-        if ((status == OrderStatus.CANCELLED) != (cancellationReason != null)) {
-            throw new DomainRuleException("Only cancelled orders have a cancellation reason");
+        if (status.carriesCancellationReason() != (cancellationReason != null)) {
+            throw new DomainRuleException("Only cancelling or cancelled orders have a cancellation reason");
         }
 
         this.id = id;
@@ -99,23 +99,42 @@ public class Order {
 
     public static Order reconstitute(UUID id, String number, String key, OrderCreationRequest request,
             CustomerSnapshot customer, ShippingAddressSnapshot address, PaymentMethod paymentMethod,
-            List<OrderItem> items, Money total, OrderStatus status, String cancellationReason,
+            List<OrderItem> items, Money total, OrderStatus status, CancellationReason cancellationReason,
             List<OrderTransition> history, Instant createdAt, Instant updatedAt, long version) {
         return new Order(id, number, key, request, customer, address, paymentMethod, items, total, status,
                 cancellationReason, history, createdAt, updatedAt, version);
     }
 
     public Order awaitPayment(Instant now) {
-        return moveTo(OrderStatus.AWAITING_PAYMENT, null, "INVENTORY_RESERVED", now);
+        return moveTo(OrderStatus.AWAITING_PAYMENT, null, TransitionTrigger.INVENTORY_RESERVED, TransitionActor.SAGA,
+                now);
     }
 
-    public Order cancel(CancellationReason reason, String trigger, Instant now) {
+    public Order cancel(CancellationReason reason, TransitionTrigger trigger, Instant now) {
         Objects.requireNonNull(reason);
 
-        return moveTo(OrderStatus.CANCELLED, reason.name(), trigger, now);
+        return moveTo(OrderStatus.CANCELLED, reason, trigger, TransitionActor.SAGA, now);
     }
 
-    private Order moveTo(OrderStatus target, String reason, String trigger, Instant now) {
+    public Order requestCancellation(CancellationReason reason, TransitionTrigger trigger, TransitionActor actor,
+            Instant now) {
+        Objects.requireNonNull(reason);
+
+        return moveTo(OrderStatus.CANCELLING, reason, trigger, actor, now);
+    }
+
+    public Order completeCancellation(TransitionTrigger trigger, TransitionActor actor, Instant now) {
+        return moveTo(OrderStatus.CANCELLED, cancellationReason, trigger, actor, now);
+    }
+
+    public boolean cancellationStarted() {
+        return status.carriesCancellationReason();
+    }
+
+    private Order moveTo(OrderStatus target, CancellationReason reason, TransitionTrigger trigger,
+            TransitionActor actor, Instant now) {
+        Objects.requireNonNull(trigger);
+        Objects.requireNonNull(actor);
         Objects.requireNonNull(now);
 
         if (!status.canMoveTo(target)) {
@@ -123,7 +142,7 @@ public class Order {
         }
 
         var nextHistory = new ArrayList<>(history);
-        nextHistory.add(new OrderTransition(status, target, trigger, now, "SAGA"));
+        nextHistory.add(new OrderTransition(status, target, trigger, now, actor));
 
         return new Order(id, number, idempotencyKey, creationRequest, customer, shippingAddress, paymentMethod, items,
                 total, target, reason, nextHistory, createdAt, now, version);
@@ -169,7 +188,7 @@ public class Order {
         return status;
     }
 
-    public String cancellationReason() {
+    public CancellationReason cancellationReason() {
         return cancellationReason;
     }
 

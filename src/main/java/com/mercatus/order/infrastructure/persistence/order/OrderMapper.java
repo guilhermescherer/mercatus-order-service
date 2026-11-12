@@ -1,11 +1,14 @@
 package com.mercatus.order.infrastructure.persistence.order;
 
+import com.mercatus.order.domain.order.CancellationReason;
 import com.mercatus.order.domain.order.Order;
 import com.mercatus.order.domain.order.OrderCreationRequest;
 import com.mercatus.order.domain.order.OrderItem;
 import com.mercatus.order.domain.order.OrderStatus;
 import com.mercatus.order.domain.order.OrderTransition;
 import com.mercatus.order.domain.order.PaymentMethod;
+import com.mercatus.order.domain.order.TransitionActor;
+import com.mercatus.order.domain.order.TransitionTrigger;
 import com.mercatus.order.domain.order.snapshot.CustomerSnapshot;
 import com.mercatus.order.domain.order.snapshot.ShippingAddressSnapshot;
 import com.mercatus.order.domain.shared.Money;
@@ -34,7 +37,8 @@ final class OrderMapper {
                 entity.items.stream()
                         .map(OrderMapper::toDomain)
                         .toList(),
-                new Money(entity.total, entity.currency), OrderStatus.valueOf(entity.status), entity.cancellationReason,
+                new Money(entity.total, entity.currency), OrderStatus.valueOf(entity.status),
+                entity.cancellationReason == null ? null : CancellationReason.valueOf(entity.cancellationReason),
                 entity.history.stream()
                         .map(OrderMapper::toDomain)
                         .toList(),
@@ -51,6 +55,7 @@ final class OrderMapper {
 
     private static OrderTransition toDomain(OrderTransitionEntity transition) {
         return new OrderTransition(transition.fromStatus == null ? null : OrderStatus.valueOf(transition.fromStatus),
-                OrderStatus.valueOf(transition.toStatus), transition.trigger, transition.occurredAt, transition.actor);
+                OrderStatus.valueOf(transition.toStatus), TransitionTrigger.valueOf(transition.trigger),
+                transition.occurredAt, TransitionActor.valueOf(transition.actor));
     }
 }

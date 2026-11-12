@@ -4,9 +4,14 @@ import com.mercatus.order.application.exception.DependencyContractException;
 import com.mercatus.order.application.exception.DependencyUnavailableException;
 import com.mercatus.order.application.exception.ResourceNotFoundException;
 import com.mercatus.order.application.exception.StateConflictException;
+import com.mercatus.order.application.order.port.in.CancelOrderUseCase;
 import com.mercatus.order.application.order.port.in.CreateOrderUseCase;
 import com.mercatus.order.application.order.port.in.GetOrderUseCase;
+import com.mercatus.order.domain.order.CancellationReason;
+import com.mercatus.order.domain.order.TransitionActor;
+import com.mercatus.order.domain.order.TransitionTrigger;
 import com.mercatus.order.web.config.CorrelationIdFilter;
+import org.springframework.dao.OptimisticLockingFailureException;
 import com.mercatus.order.web.error.ApiExceptionHandler;
 import java.util.List;
 import java.util.Map;
@@ -42,11 +47,12 @@ class OrderControllerTest {
     private static final JsonMapper JSON = strictMapper();
     private final CreateOrderUseCase create = mock(CreateOrderUseCase.class);
     private final GetOrderUseCase getOrder = mock(GetOrderUseCase.class);
+    private final CancelOrderUseCase cancelOrder = mock(CancelOrderUseCase.class);
     MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new OrderController(create, getOrder))
+        mvc = MockMvcBuilders.standaloneSetup(new OrderController(create, getOrder, cancelOrder))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setMessageConverters(new JacksonJsonHttpMessageConverter(JSON))
                 .addFilters(new CorrelationIdFilter())
@@ -166,6 +172,39 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(create);
+    }
+
+    @Test
+    void cancelAnswers202WhileCancellingAnd200WhenCancelled() throws Exception {
+        var cancelling = order().requestCancellation(CancellationReason.CUSTOMER_REQUEST,
+                TransitionTrigger.CUSTOMER_CANCELLATION_REQUESTED, TransitionActor.CUSTOMER, NOW.plusSeconds(1));
+        var cancelled = order().requestCancellation(CancellationReason.CUSTOMER_REQUEST,
+                        TransitionTrigger.CUSTOMER_CANCELLATION_REQUESTED, TransitionActor.CUSTOMER, NOW.plusSeconds(1))
+                .completeCancellation(TransitionTrigger.RESERVATION_RELEASED, TransitionActor.SAGA, NOW.plusSeconds(2));
+        when(cancelOrder.cancel(cancelling.id())).thenReturn(new CancelOrderUseCase.Result(cancelling, false));
+        when(cancelOrder.cancel(cancelled.id())).thenReturn(new CancelOrderUseCase.Result(cancelled, true));
+
+        mvc.perform(post("/orders/" + cancelling.id() + "/cancel"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("CANCELLING"))
+                .andExpect(jsonPath("$.cancellationReason").value("CUSTOMER_REQUEST"))
+                .andExpect(jsonPath("$.history[1].actor").value("CUSTOMER"));
+
+        mvc.perform(post("/orders/" + cancelled.id() + "/cancel"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    void cancelMapsMissingOrderConflictAndMalformedId() throws Exception {
+        UUID missing = UUID.randomUUID();
+        UUID contended = UUID.randomUUID();
+        when(cancelOrder.cancel(missing)).thenThrow(new ResourceNotFoundException("Order not found"));
+        when(cancelOrder.cancel(contended)).thenThrow(new OptimisticLockingFailureException("changed"));
+
+        mvc.perform(post("/orders/" + missing + "/cancel")).andExpect(status().isNotFound());
+        mvc.perform(post("/orders/" + contended + "/cancel")).andExpect(status().isConflict());
+        mvc.perform(post("/orders/not-a-uuid/cancel")).andExpect(status().isBadRequest());
     }
 
     @Test

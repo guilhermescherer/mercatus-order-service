@@ -4,5 +4,6 @@ public enum SagaStatus {
 
     AWAITING_RESERVATION,
     RESERVED,
+    AWAITING_RELEASE,
     CANCELLED
 }

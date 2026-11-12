@@ -7,6 +7,6 @@ public record OrderTransitionResponse(String fromStatus, String toStatus, String
 
     static OrderTransitionResponse from(OrderTransition transition) {
         return new OrderTransitionResponse(transition.fromStatus() == null ? null : transition.fromStatus().name(),
-                transition.toStatus().name(), transition.trigger(), transition.occurredAt(), transition.actor());
+                transition.toStatus().name(), transition.trigger().name(), transition.occurredAt(), transition.actor().name());
     }
 }

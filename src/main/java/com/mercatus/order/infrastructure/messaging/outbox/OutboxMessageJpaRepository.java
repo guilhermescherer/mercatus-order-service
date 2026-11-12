@@ -38,4 +38,7 @@ interface OutboxMessageJpaRepository extends JpaRepository<OutboxMessageEntity, 
 
     @Query(value = "SELECT count(*) FROM outbox_message WHERE published_at IS NULL", nativeQuery = true)
     long countPending();
+
+    @Query(value = "SELECT count(*) FROM outbox_message WHERE id = :id AND published_at IS NULL", nativeQuery = true)
+    long countPendingById(@Param("id") UUID id);
 }

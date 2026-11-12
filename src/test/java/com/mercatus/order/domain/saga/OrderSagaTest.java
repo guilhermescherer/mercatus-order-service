@@ -68,4 +68,87 @@ class OrderSagaTest {
         assertThatThrownBy(() -> OrderSaga.start(UUID.randomUUID(), "c", UUID.randomUUID(), Duration.ZERO, NOW))
                 .isInstanceOf(DomainRuleException.class);
     }
+
+    private OrderSaga reserved() {
+        var saga = started();
+        saga.reservationAccepted(UUID.randomUUID(), NOW.plus(Duration.ofMinutes(30)), NOW.plusSeconds(1));
+        return saga;
+    }
+
+    @Test
+    void releaseRequestMovesToTheReleaseStepWithItsOwnDeadline() {
+        var saga = reserved();
+        UUID commandId = UUID.randomUUID();
+
+        saga.releaseRequested(commandId, Duration.ofMinutes(2), NOW.plusSeconds(10));
+
+        assertThat(saga.step()).isEqualTo(SagaStep.RELEASE);
+        assertThat(saga.status()).isEqualTo(SagaStatus.AWAITING_RELEASE);
+        assertThat(saga.pendingCommandId()).contains(commandId);
+        assertThat(saga.currentDeadline()).contains(NOW.plusSeconds(10).plus(Duration.ofMinutes(2)));
+        assertThat(saga.knowsReservation(saga.reservationId())).isTrue();
+        assertThat(saga.knowsReservation(UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void compensationClosesReservedOrReleasingSagasOnly() {
+        var releasing = reserved();
+        releasing.releaseRequested(UUID.randomUUID(), Duration.ofMinutes(2), NOW.plusSeconds(10));
+        releasing.compensated(NOW.plusSeconds(20));
+        var expired = reserved();
+        expired.compensated(NOW.plusSeconds(20));
+
+        assertThat(releasing.status()).isEqualTo(SagaStatus.CANCELLED);
+        assertThat(expired.status()).isEqualTo(SagaStatus.CANCELLED);
+        assertThat(releasing.currentDeadline()).isEmpty();
+        assertThatThrownBy(() -> started().compensated(NOW)).isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> releasing.compensated(NOW)).isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> started().releaseRequested(UUID.randomUUID(), Duration.ofMinutes(1), NOW))
+                .isInstanceOf(DomainRuleException.class);
+    }
+
+    @Test
+    void overdueSagaCanBeResentExtendedOrStalled() {
+        var saga = started();
+        Instant late = saga.reserveDeadline();
+        UUID resent = UUID.randomUUID();
+
+        assertThat(saga.overdue(late.minusSeconds(1))).isFalse();
+        assertThat(saga.overdue(late)).isTrue();
+
+        saga.commandResent(resent, Duration.ofMinutes(5), late);
+        assertThat(saga.retries()).isEqualTo(1);
+        assertThat(saga.reserveCommandId()).isEqualTo(resent);
+        assertThat(saga.overdue(late)).isFalse();
+
+        saga.deadlineExtended(Duration.ofMinutes(1), late.plus(Duration.ofMinutes(5)));
+        assertThat(saga.retries()).isEqualTo(1);
+        assertThat(saga.reserveDeadline()).isEqualTo(late.plus(Duration.ofMinutes(6)));
+
+        saga.stalled(late.plus(Duration.ofMinutes(7)));
+        assertThat(saga.stalledAt()).isNotNull();
+        assertThat(saga.overdue(late.plus(Duration.ofHours(1)))).isFalse();
+    }
+
+    @Test
+    void answerAfterStallingClearsRetriesAndStall() {
+        var saga = started();
+        saga.commandResent(UUID.randomUUID(), Duration.ofMinutes(5), saga.reserveDeadline());
+        saga.stalled(NOW.plus(Duration.ofHours(1)));
+
+        saga.reservationAccepted(UUID.randomUUID(), NOW.plus(Duration.ofHours(2)), NOW.plus(Duration.ofHours(1)));
+
+        assertThat(saga.retries()).isZero();
+        assertThat(saga.stalledAt()).isNull();
+    }
+
+    @Test
+    void sagaWithoutPendingReplyCannotBeRetried() {
+        var saga = reserved();
+
+        assertThat(saga.overdue(NOW.plus(Duration.ofDays(1)))).isFalse();
+        assertThatThrownBy(() -> saga.commandResent(UUID.randomUUID(), Duration.ofMinutes(1), NOW))
+                .isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> saga.stalled(NOW)).isInstanceOf(DomainRuleException.class);
+    }
 }

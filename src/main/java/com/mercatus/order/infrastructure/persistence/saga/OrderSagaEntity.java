@@ -38,6 +38,20 @@ class OrderSagaEntity {
     @Column(name = "reservation_expires_at")
     Instant reservationExpiresAt;
 
+    @Column(name = "release_command_id")
+    UUID releaseCommandId;
+
+    @Column(name = "release_requested_at")
+    Instant releaseRequestedAt;
+
+    @Column(name = "release_deadline")
+    Instant releaseDeadline;
+
+    int retries;
+
+    @Column(name = "stalled_at")
+    Instant stalledAt;
+
     @Column(name = "created_at")
     Instant createdAt;
 

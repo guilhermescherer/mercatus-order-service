@@ -25,13 +25,13 @@ class ContractTest {
         var payload = new ReserveInventoryPayload(orderId, List.of(new ReserveInventoryPayload.Line("SKU-1", 2)));
 
         var envelope = new MessageEnvelope(
-                UUID.randomUUID(), ReserveInventoryPayload.TYPE, 1, Instant.parse("2026-10-27T20:00:00Z"),
+                UUID.randomUUID(), OutboundMessageType.RESERVE_INVENTORY.value(), 1, Instant.parse("2026-10-27T20:00:00Z"),
                 orderId.toString(), "corr-1", "cause-1", objectMapper.valueToTree(payload));
 
         String json = objectMapper.writeValueAsString(envelope);
         MessageEnvelope back = objectMapper.readValue(json, MessageEnvelope.class);
 
-        assertThat(back.type()).isEqualTo(ReserveInventoryPayload.TYPE);
+        assertThat(back.type()).isEqualTo("inventory.ReserveInventory");
         assertThat(back.schemaVersion()).isEqualTo(1);
         assertThat(back.correlationId()).isEqualTo("corr-1");
 
@@ -99,15 +99,25 @@ class ContractTest {
     @Test
     void readReservationFailedRequiresReason() {
         UUID orderId = UUID.randomUUID();
-        var complete = new InventoryReservationFailedPayload(orderId, InventoryReservationFailedPayload.OUT_OF_STOCK);
+        var complete = new InventoryReservationFailedPayload(orderId, InventoryReservationFailedPayload.Reason.OUT_OF_STOCK);
 
         assertThat(reader.readReservationFailed(objectMapper.valueToTree(complete)).reason())
-                .isEqualTo(InventoryReservationFailedPayload.OUT_OF_STOCK);
+                .isEqualTo(InventoryReservationFailedPayload.Reason.OUT_OF_STOCK);
 
         var missing = objectMapper.createObjectNode();
         missing.put("orderId", orderId.toString());
 
         assertThatThrownBy(() -> reader.readReservationFailed(missing))
+                .isInstanceOf(ContractViolationException.class);
+    }
+
+    @Test
+    void readReservationFailedRejectsUnknownReason() {
+        var unknown = objectMapper.createObjectNode();
+        unknown.put("orderId", UUID.randomUUID().toString());
+        unknown.put("reason", "WAREHOUSE_ON_FIRE");
+
+        assertThatThrownBy(() -> reader.readReservationFailed(unknown))
                 .isInstanceOf(ContractViolationException.class);
     }
 
