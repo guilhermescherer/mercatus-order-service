@@ -28,12 +28,14 @@ mvn -s .mvn/settings.xml verify
 mvn -s .mvn/settings.xml spring-boot:run
 ```
 
-Execute Catalog na porta `8081` e Customer na `8082`, conforme seus READMEs.
-O Order inicia na `8084`; cada serviço usa seu próprio banco.
+Como os demais serviços, o Order inicia na `8080`. Para executar vários serviços ao
+mesmo tempo, defina uma porta para cada um com `SERVER_PORT`; os exemplos deste README
+usam Catalog `8081`, Customer `8082`, Inventory `8083` e Order `8084`
+(`SERVER_PORT=8084`). Cada serviço usa seu próprio banco.
 
 | Variável | Padrão |
 |---|---|
-| `ORDER_PORT` | `8084` |
+| `SERVER_PORT` | `8080` |
 | `ORDER_DB_URL` | `jdbc:postgresql://localhost:5432/order` |
 | `ORDER_DB_USER` | `mercatus` |
 | `ORDER_DB_PASSWORD` | `mercatus` |
