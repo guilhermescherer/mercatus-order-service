@@ -38,4 +38,9 @@ public class OutboxStore {
     public long countPending() {
         return repository.countPending();
     }
+
+    @Transactional(readOnly = true)
+    public boolean isPending(UUID id) {
+        return repository.countPendingById(id) > 0;
+    }
 }

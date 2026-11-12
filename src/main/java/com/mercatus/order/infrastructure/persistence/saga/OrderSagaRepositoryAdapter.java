@@ -2,6 +2,8 @@ package com.mercatus.order.infrastructure.persistence.saga;
 
 import com.mercatus.order.application.saga.port.out.OrderSagaRepository;
 import com.mercatus.order.domain.saga.OrderSaga;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -29,9 +31,16 @@ class OrderSagaRepositoryAdapter implements OrderSagaRepository {
     }
 
     @Override
+    public List<UUID> findOverdue(Instant now, int limit) {
+        return repository.findOverdue(now, limit);
+    }
+
+    @Override
     public void update(OrderSaga saga) {
         int updated = repository.update(saga.orderId(), saga.step().name(), saga.status().name(),
-                saga.reservationId(), saga.reservationExpiresAt(), saga.updatedAt(), saga.version());
+                saga.reserveCommandId(), saga.reserveRequestedAt(), saga.reserveDeadline(), saga.reservationId(),
+                saga.reservationExpiresAt(), saga.releaseCommandId(), saga.releaseRequestedAt(),
+                saga.releaseDeadline(), saga.retries(), saga.stalledAt(), saga.updatedAt(), saga.version());
 
         if (updated == 0) {
             throw new OptimisticLockingFailureException("Saga " + saga.orderId() + " was changed concurrently");

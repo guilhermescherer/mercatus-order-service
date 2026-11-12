@@ -30,7 +30,7 @@ class OrderTest {
         assertThat(order.updatedAt()).isEqualTo(NOW);
         assertThat(order.version()).isZero();
         assertThat(order.history()).containsExactly(new OrderTransition(null, OrderStatus.CREATED,
-                "ORDER_CREATED", NOW, "HTTP_REQUEST"));
+                TransitionTrigger.ORDER_CREATED, NOW, TransitionActor.HTTP_REQUEST));
         assertThatThrownBy(() -> order.items().clear()).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> order.history().clear()).isInstanceOf(UnsupportedOperationException.class);
     }
@@ -133,27 +133,27 @@ class OrderTest {
         assertThat(moved.history()).hasSize(2);
         assertThat(moved.history().getLast())
                 .isEqualTo(new OrderTransition(OrderStatus.CREATED, OrderStatus.AWAITING_PAYMENT,
-                        "INVENTORY_RESERVED", later, "SAGA"));
+                        TransitionTrigger.INVENTORY_RESERVED, later, TransitionActor.SAGA));
     }
 
     @Test
     void outOfStockOrderIsCancelledWithReason() {
-        var cancelled = order().cancel(CancellationReason.OUT_OF_STOCK, "INVENTORY_RESERVATION_FAILED",
+        var cancelled = order().cancel(CancellationReason.OUT_OF_STOCK, TransitionTrigger.INVENTORY_RESERVATION_FAILED,
                 NOW.plusSeconds(5));
 
         assertThat(cancelled.status()).isEqualTo(OrderStatus.CANCELLED);
-        assertThat(cancelled.cancellationReason()).isEqualTo("OUT_OF_STOCK");
-        assertThat(cancelled.history().getLast().trigger()).isEqualTo("INVENTORY_RESERVATION_FAILED");
+        assertThat(cancelled.cancellationReason()).isEqualTo(CancellationReason.OUT_OF_STOCK);
+        assertThat(cancelled.history().getLast().trigger()).isEqualTo(TransitionTrigger.INVENTORY_RESERVATION_FAILED);
     }
 
     @Test
     void decidedOrderRejectsFurtherReservationTransitions() {
         var awaiting = order().awaitPayment(NOW.plusSeconds(1));
-        var cancelled = order().cancel(CancellationReason.OUT_OF_STOCK, "INVENTORY_RESERVATION_FAILED",
+        var cancelled = order().cancel(CancellationReason.OUT_OF_STOCK, TransitionTrigger.INVENTORY_RESERVATION_FAILED,
                 NOW.plusSeconds(1));
 
         assertThatThrownBy(() -> awaiting.awaitPayment(NOW.plusSeconds(2))).isInstanceOf(DomainRuleException.class);
-        assertThatThrownBy(() -> awaiting.cancel(CancellationReason.OUT_OF_STOCK, "X", NOW.plusSeconds(2)))
+        assertThatThrownBy(() -> awaiting.cancel(CancellationReason.OUT_OF_STOCK, TransitionTrigger.INVENTORY_RESERVATION_FAILED, NOW.plusSeconds(2)))
                 .isInstanceOf(DomainRuleException.class);
         assertThatThrownBy(() -> cancelled.awaitPayment(NOW.plusSeconds(2))).isInstanceOf(DomainRuleException.class);
     }
@@ -166,5 +166,61 @@ class OrderTest {
 
         assertThat(original.status()).isEqualTo(OrderStatus.CREATED);
         assertThat(original.history()).hasSize(1);
+    }
+
+    @Test
+    void customerCancellationGoesThroughCancellingAndKeepsTheReason() {
+        var cancelling = order().requestCancellation(CancellationReason.CUSTOMER_REQUEST,
+                TransitionTrigger.CUSTOMER_CANCELLATION_REQUESTED, TransitionActor.CUSTOMER, NOW.plusSeconds(1));
+        var cancelled = cancelling.completeCancellation(TransitionTrigger.RESERVATION_RELEASED, TransitionActor.SAGA,
+                NOW.plusSeconds(2));
+
+        assertThat(cancelling.status()).isEqualTo(OrderStatus.CANCELLING);
+        assertThat(cancelling.cancellationReason()).isEqualTo(CancellationReason.CUSTOMER_REQUEST);
+        assertThat(cancelling.cancellationStarted()).isTrue();
+        assertThat(cancelled.status()).isEqualTo(OrderStatus.CANCELLED);
+        assertThat(cancelled.cancellationReason()).isEqualTo(CancellationReason.CUSTOMER_REQUEST);
+        assertThat(cancelled.history()).extracting(OrderTransition::toStatus)
+                .containsExactly(OrderStatus.CREATED, OrderStatus.CANCELLING, OrderStatus.CANCELLED);
+        assertThat(cancelled.history()).extracting(OrderTransition::actor)
+                .containsExactly(TransitionActor.HTTP_REQUEST, TransitionActor.CUSTOMER, TransitionActor.SAGA);
+    }
+
+    @Test
+    void awaitingPaymentCanStartCancellation() {
+        var cancelling = order().awaitPayment(NOW.plusSeconds(1)).requestCancellation(
+                CancellationReason.RESERVATION_EXPIRED, TransitionTrigger.RESERVATION_EXPIRED, TransitionActor.SAGA,
+                NOW.plusSeconds(2));
+
+        assertThat(cancelling.status()).isEqualTo(OrderStatus.CANCELLING);
+        assertThat(cancelling.history().getLast().fromStatus()).isEqualTo(OrderStatus.AWAITING_PAYMENT);
+    }
+
+    @Test
+    void cancellationNeverMovesBackOrRestarts() {
+        var cancelling = order().requestCancellation(CancellationReason.CUSTOMER_REQUEST,
+                TransitionTrigger.CUSTOMER_CANCELLATION_REQUESTED, TransitionActor.CUSTOMER, NOW.plusSeconds(1));
+        var cancelled = cancelling.completeCancellation(TransitionTrigger.RESERVATION_RELEASED, TransitionActor.SAGA,
+                NOW.plusSeconds(2));
+
+        assertThatThrownBy(() -> cancelling.awaitPayment(NOW.plusSeconds(3))).isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> cancelling.requestCancellation(CancellationReason.CUSTOMER_REQUEST,
+                TransitionTrigger.CUSTOMER_CANCELLATION_REQUESTED, TransitionActor.CUSTOMER, NOW.plusSeconds(3)))
+                .isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> cancelled.completeCancellation(TransitionTrigger.RESERVATION_RELEASED,
+                TransitionActor.SAGA, NOW.plusSeconds(3))).isInstanceOf(DomainRuleException.class);
+        assertThatThrownBy(() -> order().completeCancellation(TransitionTrigger.RESERVATION_RELEASED,
+                TransitionActor.SAGA, NOW.plusSeconds(3))).isInstanceOf(DomainRuleException.class);
+    }
+
+    @Test
+    void cancellingOrderRequiresAReason() {
+        var order = order();
+
+        assertThatThrownBy(() -> Order.reconstitute(order.id(), order.number(), order.idempotencyKey(),
+                order.creationRequest(), order.customer(), order.shippingAddress(), order.paymentMethod(),
+                order.items(), order.total(), OrderStatus.CANCELLING, null, order.history(), order.createdAt(),
+                order.updatedAt(), order.version()))
+                .isInstanceOf(DomainRuleException.class);
     }
 }

@@ -8,8 +8,6 @@ import java.util.UUID;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ReserveInventoryPayload(UUID orderId, List<Line> lines) {
 
-    public static final String TYPE = "inventory.ReserveInventory";
-
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Line(String skuCode, long quantity) {
     }

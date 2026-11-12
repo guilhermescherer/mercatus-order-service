@@ -2,6 +2,8 @@ package com.mercatus.order.infrastructure.messaging.contract;
 
 import com.mercatus.order.infrastructure.messaging.contract.payload.InventoryReservationFailedPayload;
 import com.mercatus.order.infrastructure.messaging.contract.payload.InventoryReservedPayload;
+import com.mercatus.order.infrastructure.messaging.contract.payload.ReservationExpiredPayload;
+import com.mercatus.order.infrastructure.messaging.contract.payload.ReservationReleasedPayload;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -39,7 +41,26 @@ public final class ContractReader {
         var value = convert(payload, InventoryReservationFailedPayload.class);
 
         require(value.orderId(), "orderId");
-        requireText(value.reason(), "reason");
+        require(value.reason(), "reason");
+
+        return value;
+    }
+
+    public ReservationReleasedPayload readReleased(JsonNode payload) {
+        var value = convert(payload, ReservationReleasedPayload.class);
+
+        require(value.orderId(), "orderId");
+        require(value.reservationId(), "reservationId");
+
+        return value;
+    }
+
+    public ReservationExpiredPayload readExpired(JsonNode payload) {
+        var value = convert(payload, ReservationExpiredPayload.class);
+
+        require(value.orderId(), "orderId");
+        require(value.reservationId(), "reservationId");
+        require(value.expiresAt(), "expiresAt");
 
         return value;
     }
@@ -64,12 +85,6 @@ public final class ContractReader {
 
     private void require(Object value, String field) {
         if (value == null) {
-            throw new ContractViolationException(field + " is required");
-        }
-    }
-
-    private void requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
             throw new ContractViolationException(field + " is required");
         }
     }

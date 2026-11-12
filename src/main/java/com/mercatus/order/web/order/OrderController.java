@@ -1,5 +1,6 @@
 package com.mercatus.order.web.order;
 
+import com.mercatus.order.application.order.port.in.CancelOrderUseCase;
 import com.mercatus.order.application.order.port.in.CreateOrderUseCase;
 import com.mercatus.order.application.order.port.in.GetOrderUseCase;
 import com.mercatus.order.web.order.dto.CreateOrderRequest;
@@ -41,10 +42,12 @@ class OrderController {
     private static final Logger log = LoggerFactory.getLogger(OrderController.class);
     private final CreateOrderUseCase createOrder;
     private final GetOrderUseCase getOrder;
+    private final CancelOrderUseCase cancelOrder;
 
-    OrderController(CreateOrderUseCase createOrder, GetOrderUseCase getOrder) {
+    OrderController(CreateOrderUseCase createOrder, GetOrderUseCase getOrder, CancelOrderUseCase cancelOrder) {
         this.createOrder = createOrder;
         this.getOrder = getOrder;
+        this.cancelOrder = cancelOrder;
     }
 
     @PostMapping
@@ -92,12 +95,35 @@ class OrderController {
     @GetMapping("/{id}")
     @Operation(summary = "Get a persisted order with its original snapshots and history")
     OrderResponse get(@Parameter(schema = @Schema(type = "string", format = "uuid")) @PathVariable String id) {
+        return OrderResponse.from(getOrder.get(parseId(id)));
+    }
+
+    @PostMapping("/{id}/cancel")
+    @Operation(summary = "Request the cancellation of an order",
+            description = "Idempotent. The order stays CANCELLING until its stock reservation is released or expired.")
+    @ApiResponse(responseCode = "200", description = "Order cancelled (now or before)",
+            content = @Content(schema = @Schema(implementation = OrderResponse.class)))
+    @ApiResponse(responseCode = "202", description = "Cancellation in progress",
+            content = @Content(schema = @Schema(implementation = OrderResponse.class)))
+    @ApiResponse(responseCode = "409", description = "Order changed concurrently; retrying is safe",
+            content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    ResponseEntity<OrderResponse> cancel(
+            @Parameter(schema = @Schema(type = "string", format = "uuid")) @PathVariable String id) {
+        var result = cancelOrder.cancel(parseId(id));
+
+        log.info("Order {} cancellation {}", result.order().id(), result.completed() ? "completed" : "in progress");
+
+        return ResponseEntity.status(result.completed() ? HttpStatus.OK : HttpStatus.ACCEPTED)
+                .body(OrderResponse.from(result.order()));
+    }
+
+    private UUID parseId(String id) {
         UUID parsed = UUID.fromString(id);
 
         if (!parsed.toString().equalsIgnoreCase(id)) {
             throw new IllegalArgumentException("Invalid order identifier");
         }
 
-        return OrderResponse.from(getOrder.get(parsed));
+        return parsed;
     }
 }

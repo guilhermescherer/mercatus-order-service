@@ -49,6 +49,11 @@ management:
 order:
   saga:
     reserve-timeout: ${ORDER_RESERVE_TIMEOUT:PT5M}
+    release-timeout: ${ORDER_RELEASE_TIMEOUT:PT5M}
+    max-retries: ${ORDER_SAGA_MAX_RETRIES:5}
+    recovery:
+      interval-ms: ${ORDER_SAGA_RECOVERY_INTERVAL_MS:30000}
+      batch-size: ${ORDER_SAGA_RECOVERY_BATCH_SIZE:100}
   messaging:
     topics:
       commands: ${INVENTORY_COMMANDS_TOPIC:inventory.commands.v1}

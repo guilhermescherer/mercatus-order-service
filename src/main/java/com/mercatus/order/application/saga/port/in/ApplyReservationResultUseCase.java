@@ -25,6 +25,7 @@ public interface ApplyReservationResultUseCase {
 
     enum Outcome {
         APPLIED,
+        RELEASE_REQUESTED,
         IGNORED_UNKNOWN_ORDER,
         IGNORED_ALREADY_DECIDED
     }
