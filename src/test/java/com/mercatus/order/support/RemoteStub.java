@@ -1,5 +1,8 @@
 package com.mercatus.order.support;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.test.context.DynamicPropertyRegistry;
+
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -21,12 +24,18 @@ import static com.mercatus.order.support.OrderFixture.*;
 
 public final class RemoteStub implements AutoCloseable {
 
+    public static final String SERVICE_TOKEN = "stub-service-token";
+    private static final String CLIENT_SECRET = "test-client-secret";
+
     private final JsonMapper json = JsonMapper.builder().build();
     private final HttpServer server;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<String, Reply> replies = new ConcurrentHashMap<>();
     public final List<String> paths = new CopyOnWriteArrayList<>();
     public final List<String> correlations = new CopyOnWriteArrayList<>();
+    public final List<String> authorizations = new CopyOnWriteArrayList<>();
+    public final AtomicInteger tokenRequests = new AtomicInteger();
+    private volatile Reply tokenReply;
     public volatile CyclicBarrier catalogBarrier;
 
     public RemoteStub() {
@@ -45,6 +54,12 @@ public final class RemoteStub implements AutoCloseable {
 
             if (correlation != null) {
                 correlations.add(correlation);
+            }
+
+            String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+
+            if (authorization != null) {
+                authorizations.add(authorization);
             }
 
             Reply reply = replies.getOrDefault(path, new Reply(404, Map.of(), 0));
@@ -70,8 +85,48 @@ public final class RemoteStub implements AutoCloseable {
             }
         });
 
+        server.createContext("/token", exchange -> {
+            tokenRequests.incrementAndGet();
+            Reply reply = tokenReply;
+
+            try {
+                if (reply.status < 0) {
+                    return;
+                }
+
+                byte[] bytes = json.writeValueAsString(reply.body).getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(reply.status, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            } finally {
+                exchange.close();
+            }
+        });
+
         reset();
         server.start();
+    }
+
+    public String tokenUri() {
+        return "http://127.0.0.1:" + server.getAddress().getPort() + "/token";
+    }
+
+    public void registerServiceToken(DynamicPropertyRegistry registry) {
+        registry.add("spring.security.oauth2.client.provider.mercatus.token-uri", this::tokenUri);
+        registry.add("spring.security.oauth2.client.registration.order-service.client-secret", () -> CLIENT_SECRET);
+    }
+
+    public List<String> serviceTokenArguments() {
+        return List.of("--spring.security.oauth2.client.provider.mercatus.token-uri=" + tokenUri(),
+                "--spring.security.oauth2.client.registration.order-service.client-secret=" + CLIENT_SECRET);
+    }
+
+    public void tokenReply(int status, Object body) {
+        tokenReply = new Reply(status, body, 0);
+    }
+
+    public void tokenUnreachable() {
+        tokenReply = new Reply(-1, Map.of(), 0);
     }
 
     public String baseUrl() {
@@ -82,7 +137,10 @@ public final class RemoteStub implements AutoCloseable {
         catalogBarrier = null;
         paths.clear();
         correlations.clear();
+        authorizations.clear();
         replies.clear();
+        tokenRequests.set(0);
+        tokenReply(200, Map.of("access_token", SERVICE_TOKEN, "token_type", "Bearer", "expires_in", 300));
 
         reply("/customers/" + CUSTOMER, 200, customerBody());
         reply("/skus?code=A", 200, skuBody("A", "42.50"));

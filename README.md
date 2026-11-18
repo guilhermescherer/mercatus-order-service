@@ -3,14 +3,15 @@
 Criação e consulta de pedidos com snapshots imutáveis de Catalog e Customer.
 O serviço segue arquitetura hexagonal em `com.mercatus.order`, herda o parent
 publicado `com.mercatus:mercatus-parent:1.0.0` e usa Java 25, Spring Boot 4.1,
-PostgreSQL 17, Flyway, JPA e DTOs JSON próprios.
+PostgreSQL 17, Flyway, JPA, Kafka, Spring Security (OAuth2 Resource Server e
+OAuth2 Client) e DTOs JSON próprios.
 
 ## Execução local
 
-Inicie o PostgreSQL pelo repositório Platform:
+Inicie PostgreSQL, Kafka e Keycloak pelo repositório Platform:
 
 ```bash
-docker compose -f ../mercatus-platform/compose/docker-compose.yml --profile core up -d
+docker compose -f ../mercatus-platform/compose/docker-compose.yml --profile core --profile events --profile security up -d --wait
 ```
 
 O database `order` precisa existir. Em volume antigo, siga o procedimento do
@@ -43,6 +44,11 @@ usam Catalog `8081`, Customer `8082`, Inventory `8083` e Order `8084`
 | `CUSTOMER_BASE_URL` | `http://localhost:8082/api/v1` |
 | `CATALOG_CONNECT_TIMEOUT`, `CUSTOMER_CONNECT_TIMEOUT` | `2s` |
 | `CATALOG_READ_TIMEOUT`, `CUSTOMER_READ_TIMEOUT` | `5s` |
+| `MERCATUS_ISSUER_URI` | `http://localhost:8180/realms/mercatus` |
+| `ORDER_CLIENT_ID` | `order-service` |
+| `ORDER_CLIENT_SECRET` | vazio (obrigatório para chamar Catalog e Customer) |
+| `IDENTITY_PROVIDER_CONNECT_TIMEOUT` | `2s` |
+| `IDENTITY_PROVIDER_READ_TIMEOUT` | `5s` |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` |
 | `INVENTORY_COMMANDS_TOPIC` | `inventory.commands.v1` |
 | `INVENTORY_EVENTS_TOPIC` | `inventory.events.v1` |
@@ -131,14 +137,15 @@ Inventory 8083, Order 8084).
 
 ```bash
 curl -i http://localhost:8084/api/v1/orders \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: purchase-example-1' \
   -H 'X-Correlation-Id: example-flow' \
   -d '{"customerId":"019a0000-0000-7000-8000-000000000001","addressId":"019a0000-0000-7000-8000-000000000002","paymentMethod":"PIX","items":[{"skuCode":"SHIRT-M","quantity":2}]}'
 
-curl http://localhost:8084/api/v1/orders/ID_DO_PEDIDO
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8084/api/v1/orders/ID_DO_PEDIDO
 
-curl -i -X POST http://localhost:8084/api/v1/orders/ID_DO_PEDIDO/cancel
+curl -i -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8084/api/v1/orders/ID_DO_PEDIDO/cancel
 ```
 
 Substitua os ids e o código pelos registros existentes em Customer e Catalog.
@@ -184,15 +191,58 @@ continua definida no caso de uso.
 | Situação | HTTP |
 |---|---|
 | JSON, campos, tipos, UUID ou cabeçalho inválidos | `400` |
+| Sem token, token inválido, expirado ou de outro issuer | `401` |
+| Papel sem permissão para a rota | `403` |
 | Pedido, cliente ou SKU inexistente | `404` |
 | Chave usada com outro conteúdo ou conflito de persistência | `409` |
 | Regra de compra ou limite monetário violado | `422` |
-| Resposta remota incompatível ou incompleta | `502` |
-| Timeout, erro técnico ou dependência indisponível | `503` |
+| Resposta remota incompatível ou incompleta; credencial do serviço recusada pelo Keycloak; Catalog ou Customer recusam o token do serviço (`401`/`403`) | `502` |
+| Timeout, erro técnico ou dependência indisponível, inclusive o Keycloak (token do serviço ou chaves para validar o token recebido) | `503` |
 
 Erros usam Problem Details e mensagens sem corpos remotos ou dados pessoais.
 Status numérico na resposta do Customer é incompatível e retorna `502`;
 apenas os nomes `ACTIVE` e `INACTIVE` são aceitos.
+
+## Segurança
+
+Toda rota exige `Authorization: Bearer <token>`, exceto `GET /ping`,
+`/actuator/health`, `/actuator/info` e o OpenAPI (`/v3/api-docs`, `/swagger-ui`).
+O token é um JWT do realm `mercatus` do Keycloak: o serviço confere assinatura
+(chaves públicas do realm, obtidas em `<issuer>/protocol/openid-connect/certs` e
+mantidas em cache), issuer e validade, e lê os papéis de `realm_access.roles`.
+
+| Método e rota | Papéis |
+|---|---|
+| `POST /orders` | `CUSTOMER` |
+| `GET /orders/{id}` | `CUSTOMER`, `OPERATOR` |
+| `POST /orders/{id}/cancel` | `CUSTOMER` |
+
+`ADMIN` é composto no realm e inclui `OPERATOR`. Qualquer outra rota é negada.
+Respostas `401`, `403` e `503` de segurança usam Problem Details e trazem
+`X-Correlation-Id`. Os papéis controlam o tipo de operação, não o dono do dado:
+um token `CUSTOMER` ainda alcança o pedido de outro cliente pelo id.
+
+### Chamadas a Catalog e Customer
+
+O Order se autentica em Catalog e Customer com o próprio token, obtido no
+Keycloak pelo fluxo *client credentials* do cliente `order-service` (papel
+`SERVICE`). O secret vem de `ORDER_CLIENT_SECRET`; no Keycloak local, o valor de
+desenvolvimento está no realm descrito no
+[README do Platform](../mercatus-platform/README.md). O token fica em memória e é
+reaproveitado até perto do vencimento; se Catalog ou Customer responderem `401`,
+ele é descartado e um novo é pedido na chamada seguinte. O pedido do token usa
+os timeouts `IDENTITY_PROVIDER_*`.
+
+Os comandos e eventos Kafka da saga não passam por essa verificação: a
+segurança se aplica à API HTTP.
+
+Para obter um token de cliente no Keycloak local:
+
+```bash
+TOKEN=$(curl -s http://localhost:8180/realms/mercatus/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=mercatus-cli -d username=customer1 -d password=customer1 \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+```
 
 ## Validação
 
@@ -206,19 +256,28 @@ Os ITs de saga (`OrderSagaIT`, `OrderCancellationIT`, `ReservationClosureIT`,
 `SagaRecoveryIT`) usam Kafka `apache/kafka:3.9.1` e PostgreSQL 17 reais e fazem o
 papel do Inventory publicando as respostas no tópico de eventos.
 
-`OrderApiIT` e `OrderRestartIT` usam PostgreSQL 17 via Testcontainers,
+Os ITs de API (`OrderCreationIT`, `OrderValidationIT`, `OrderPersistenceIT`,
+`OrderDependencyFailureIT`) e `OrderRestartIT` usam PostgreSQL 17 via Testcontainers,
 aplicação real e servidor HTTP controlável do JDK. Cobrem snapshots,
 contratos, validações, falhas remotas, timeout, concorrência entre oito
 requisições, rollback depois de gravar itens, constraints, migration,
 OpenAPI e replay após reiniciar o contexto com o mesmo banco. Docker é
 obrigatório e os testes não são ignorados automaticamente quando falta.
 
+`OrderSecurityIT` cobre rotas públicas, ausência de token, token malformado,
+assinado por chave desconhecida, expirado e de outro issuer, `403` por papel,
+rotas sem regra e a matriz de papéis; `OrderIdentityProviderOutageIT`, o serviço
+com o Keycloak inacessível. `ClientCredentialsIT` cobre o token do serviço:
+enviado a Catalog e Customer, reaproveitado, descartado após `401`, e as falhas
+(Keycloak inalcançável ou com erro → `503`; credencial recusada ou token recusado
+pela dependência → `502`), sem criar pedido. Os testes não usam o Keycloak:
+`TestTokens` assina JWTs com chaves geradas em memória e as publica num servidor
+HTTP local (JWKS), e o servidor controlável do JDK simula o endpoint de token.
+
 ## Limite da entrega
 
 A saga cobre reserva, cancelamento, liberação e expiração de reserva, além do
-reenvio por prazo. Pagamento, listagem e edição de pedidos pertencem às próximas
-fases. A varredura de prazos assume uma instância do Order; com várias, a seleção
+reenvio por prazo. Pagamento, listagem e edição de pedidos ainda não existem. A varredura de prazos assume uma instância do Order; com várias, a seleção
 das sagas vencidas precisa de bloqueio por linha. Não há endpoint de operador para
 sagas travadas (o aviso é o log e a coluna `stalled_at`). O isolamento local de
-credenciais permanece como dívida técnica, a ser resolvida nas fases de
-infraestrutura.
+credenciais de banco permanece como dívida técnica.

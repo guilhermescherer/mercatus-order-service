@@ -1,5 +1,9 @@
 package com.mercatus.order.integration.saga;
 
+import org.springframework.http.HttpHeaders;
+
+import com.mercatus.order.support.TestTokens;
+
 import com.mercatus.order.infrastructure.messaging.contract.ContractReader;
 import com.mercatus.order.infrastructure.messaging.contract.MessageEnvelope;
 import com.mercatus.order.support.KafkaProbe;
@@ -64,6 +68,8 @@ class OrderSagaIT {
 
     @DynamicPropertySource
     static void dependencies(DynamicPropertyRegistry registry) {
+        TestTokens.register(registry);
+        remote.registerServiceToken(registry);
         registry.add("order.clients.catalog.base-url", remote::baseUrl);
         registry.add("order.clients.customer.base-url", remote::baseUrl);
     }
@@ -81,7 +87,9 @@ class OrderSagaIT {
     @BeforeEach
     void setUp() {
         remote.reset();
-        client = RestClient.builder().baseUrl("http://localhost:" + port + "/api/v1").build();
+        client = RestClient.builder().baseUrl("http://localhost:" + port + "/api/v1")
+                .defaultHeader(HttpHeaders.AUTHORIZATION, TestTokens.bearer(TestTokens.customer()))
+                .build();
         commands = new KafkaProbe(kafka.getBootstrapServers(), COMMANDS);
     }
 

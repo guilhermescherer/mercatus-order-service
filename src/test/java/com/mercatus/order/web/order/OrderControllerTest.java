@@ -11,6 +11,7 @@ import com.mercatus.order.domain.order.CancellationReason;
 import com.mercatus.order.domain.order.TransitionActor;
 import com.mercatus.order.domain.order.TransitionTrigger;
 import com.mercatus.order.web.config.CorrelationIdFilter;
+import com.mercatus.order.web.config.JsonConfig;
 import org.springframework.dao.OptimisticLockingFailureException;
 import com.mercatus.order.web.error.ApiExceptionHandler;
 import java.util.List;
@@ -231,7 +232,7 @@ class OrderControllerTest {
     }
 
     private static JsonMapper strictMapper() {
-        try (var context = new AnnotationConfigApplicationContext("com.mercatus.order.web.config")) {
+        try (var context = new AnnotationConfigApplicationContext(JsonConfig.class)) {
             var builder = JsonMapper.builder();
             context.getBean(JsonMapperBuilderCustomizer.class).customize(builder);
 

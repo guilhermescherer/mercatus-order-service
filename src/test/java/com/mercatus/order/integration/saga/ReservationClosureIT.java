@@ -1,5 +1,7 @@
 package com.mercatus.order.integration.saga;
 
+import com.mercatus.order.support.TestTokens;
+
 import com.mercatus.order.infrastructure.messaging.contract.ContractReader;
 import com.mercatus.order.infrastructure.messaging.contract.MessageEnvelope;
 import com.mercatus.order.support.KafkaProbe;
@@ -64,6 +66,8 @@ class ReservationClosureIT {
 
     @DynamicPropertySource
     static void dependencies(DynamicPropertyRegistry registry) {
+        TestTokens.register(registry);
+        remote.registerServiceToken(registry);
         registry.add("order.clients.catalog.base-url", remote::baseUrl);
         registry.add("order.clients.customer.base-url", remote::baseUrl);
     }

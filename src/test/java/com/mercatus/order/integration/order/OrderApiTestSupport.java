@@ -1,5 +1,8 @@
 package com.mercatus.order.integration.order;
 
+import com.mercatus.order.support.TestTokens;
+import org.springframework.http.HttpHeaders;
+
 import com.mercatus.order.support.RemoteStub;
 import com.mercatus.order.web.order.dto.OrderResponse;
 import java.nio.charset.StandardCharsets;
@@ -41,6 +44,8 @@ abstract class OrderApiTestSupport {
 
     @DynamicPropertySource
     static void dependencies(DynamicPropertyRegistry registry) {
+        TestTokens.register(registry);
+        remote.registerServiceToken(registry);
         registry.add("order.clients.catalog.base-url", remote::baseUrl);
         registry.add("order.clients.customer.base-url", remote::baseUrl);
         registry.add("order.clients.catalog.read-timeout", () -> "2s");
@@ -59,6 +64,7 @@ abstract class OrderApiTestSupport {
         client = RestClient.builder()
                 .baseUrl("http://localhost:" + port + "/api/v1")
                 .requestFactory(factory)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, TestTokens.bearer(TestTokens.customer()))
                 .build();
     }
 
