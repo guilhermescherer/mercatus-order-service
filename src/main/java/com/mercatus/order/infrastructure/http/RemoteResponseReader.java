@@ -3,6 +3,9 @@ package com.mercatus.order.infrastructure.http;
 import com.mercatus.order.application.exception.DependencyContractException;
 import com.mercatus.order.application.exception.DependencyUnavailableException;
 import com.mercatus.order.application.exception.ResourceNotFoundException;
+import java.io.IOException;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -16,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.type.LogicalType;
 
 public final class RemoteResponseReader {
+
+    private static final String IDENTITY_PROVIDER = "Identity provider";
 
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(EnumFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
@@ -66,7 +71,19 @@ public final class RemoteResponseReader {
             throw new DependencyUnavailableException(dependency + " is unavailable");
         } catch (RestClientException ex) {
             throw invalid(dependency);
+        } catch (OAuth2AuthorizationException ex) {
+            throw serviceTokenFailure(ex);
         }
+    }
+
+    private static RuntimeException serviceTokenFailure(OAuth2AuthorizationException failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof IOException || cause instanceof ResourceAccessException
+                    || cause instanceof HttpServerErrorException) {
+                return new DependencyUnavailableException(IDENTITY_PROVIDER + " is unavailable");
+            }
+        }
+        return new DependencyContractException(IDENTITY_PROVIDER + " rejected the service credentials");
     }
 
     public static DependencyContractException invalid(String dependency) {

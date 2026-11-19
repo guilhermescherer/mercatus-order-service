@@ -11,7 +11,7 @@ import tools.jackson.databind.cfg.EnumFeature;
 import tools.jackson.databind.type.LogicalType;
 
 @Configuration
-class JsonConfig {
+public class JsonConfig {
 
     @Bean
     JsonMapperBuilderCustomizer strictRequestJson() {

@@ -11,6 +11,22 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${MERCATUS_ISSUER_URI:http://localhost:8180/realms/mercatus}
+          jwk-set-uri: ${MERCATUS_ISSUER_URI:http://localhost:8180/realms/mercatus}/protocol/openid-connect/certs
+      client:
+        registration:
+          order-service:
+            provider: mercatus
+            client-id: ${ORDER_CLIENT_ID:order-service}
+            client-secret: ${ORDER_CLIENT_SECRET:}
+            authorization-grant-type: client_credentials
+        provider:
+          mercatus:
+            token-uri: ${MERCATUS_ISSUER_URI:http://localhost:8180/realms/mercatus}/protocol/openid-connect/token
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
@@ -70,3 +86,6 @@ order:
       base-url: ${CUSTOMER_BASE_URL:http://localhost:8082/api/v1}
       connect-timeout: ${CUSTOMER_CONNECT_TIMEOUT:2s}
       read-timeout: ${CUSTOMER_READ_TIMEOUT:5s}
+    identity-provider:
+      connect-timeout: ${IDENTITY_PROVIDER_CONNECT_TIMEOUT:2s}
+      read-timeout: ${IDENTITY_PROVIDER_READ_TIMEOUT:5s}

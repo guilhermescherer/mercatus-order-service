@@ -1,5 +1,10 @@
 package com.mercatus.order.integration.order;
 
+import com.mercatus.order.support.TestTokens;
+import org.springframework.http.HttpHeaders;
+import java.util.ArrayList;
+import java.util.List;
+
 import com.mercatus.order.OrderApplication;
 import com.mercatus.order.support.RemoteStub;
 import com.mercatus.order.web.order.dto.OrderResponse;
@@ -64,19 +69,23 @@ class OrderRestartIT {
     }
 
     private ConfigurableApplicationContext start(RemoteStub remote) {
-        return new SpringApplicationBuilder(OrderApplication.class).run(
+        List<String> arguments = new ArrayList<>(List.of(
                 "--server.port=0", "--spring.datasource.url=" + postgres.getJdbcUrl(),
                 "--spring.datasource.username=" + postgres.getUsername(),
                 "--spring.datasource.password=" + postgres.getPassword(),
                 "--order.clients.catalog.base-url=" + remote.baseUrl(),
                 "--order.clients.customer.base-url=" + remote.baseUrl(),
-                "--spring.main.banner-mode=off");
+                "--spring.main.banner-mode=off"));
+        arguments.addAll(List.of(TestTokens.arguments()));
+        arguments.addAll(remote.serviceTokenArguments());
+        return new SpringApplicationBuilder(OrderApplication.class).run(arguments.toArray(String[]::new));
     }
 
     private RestClient client(ConfigurableApplicationContext context) {
         return RestClient.builder()
                 .baseUrl("http://localhost:" + context.getEnvironment().getProperty("local.server.port")
                         + "/api/v1")
+                .defaultHeader(HttpHeaders.AUTHORIZATION, TestTokens.bearer(TestTokens.customer()))
                 .build();
     }
 }

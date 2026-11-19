@@ -4,6 +4,7 @@ import org.slf4j.MDC;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
@@ -12,16 +13,16 @@ import org.springframework.web.client.RestClient;
 class HttpClientConfig {
 
     @Bean
-    RestClient catalogClient(HttpClientProperties properties) {
-        return client(properties.catalog());
+    RestClient catalogClient(HttpClientProperties properties, ClientHttpRequestInterceptor serviceTokenInterceptor) {
+        return client(properties.catalog(), serviceTokenInterceptor);
     }
 
     @Bean
-    RestClient customerClient(HttpClientProperties properties) {
-        return client(properties.customer());
+    RestClient customerClient(HttpClientProperties properties, ClientHttpRequestInterceptor serviceTokenInterceptor) {
+        return client(properties.customer(), serviceTokenInterceptor);
     }
 
-    private RestClient client(HttpClientProperties.Endpoint endpoint) {
+    private RestClient client(HttpClientProperties.Endpoint endpoint, ClientHttpRequestInterceptor serviceToken) {
         var factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(endpoint.connectTimeout());
         factory.setReadTimeout(endpoint.readTimeout());
@@ -38,6 +39,7 @@ class HttpClientConfig {
 
                     return execution.execute(request, body);
                 })
+                .requestInterceptor(serviceToken)
                 .build();
     }
 }

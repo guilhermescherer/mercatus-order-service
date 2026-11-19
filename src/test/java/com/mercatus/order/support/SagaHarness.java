@@ -1,5 +1,7 @@
 package com.mercatus.order.support;
 
+import org.springframework.http.HttpHeaders;
+
 import com.mercatus.order.infrastructure.messaging.contract.ContractReader;
 import com.mercatus.order.infrastructure.messaging.contract.MessageEnvelope;
 import com.mercatus.order.web.order.dto.OrderResponse;
@@ -29,7 +31,9 @@ public final class SagaHarness implements AutoCloseable {
     private final KafkaProbe commands;
 
     public SagaHarness(int port, String bootstrapServers, ContractReader reader) {
-        this.client = RestClient.builder().baseUrl("http://localhost:" + port + "/api/v1").build();
+        this.client = RestClient.builder().baseUrl("http://localhost:" + port + "/api/v1")
+                .defaultHeader(HttpHeaders.AUTHORIZATION, TestTokens.bearer(TestTokens.customer()))
+                .build();
         this.bootstrapServers = bootstrapServers;
         this.reader = reader;
         this.commands = new KafkaProbe(bootstrapServers, COMMANDS);
